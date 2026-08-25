@@ -1,6 +1,6 @@
 ---
 name: video-use-install
-description: Install video-use into the current agent (Claude Code, Codex, Hermes, Openclaw, etc.) and wire up ffmpeg + the ElevenLabs API key so the user can start editing immediately.
+description: Install video-use into the current agent (Claude Code, Codex, Hermes, Openclaw, etc.) and wire up ffmpeg + API keys so the user can start editing immediately.
 ---
 
 # video-use install
@@ -15,7 +15,7 @@ Three things must exist on this machine:
 
 1. The `video-use` repo cloned somewhere stable.
 2. `ffmpeg` on `$PATH` (plus optional `yt-dlp` for online sources).
-3. An ElevenLabs API key in `.env` at the repo root (for Scribe transcription).
+3. An ElevenLabs API key in `.env` at the repo root (for Scribe transcription). Optionally a MiMo API key in the same `.env` for TTS voiceover.
 
 And one thing must be true about the current agent:
 
@@ -23,7 +23,7 @@ And one thing must be true about the current agent:
 
 ## Install prompt contract
 
-- Do everything yourself. Only ask the user for things you cannot generate — the ElevenLabs API key, and confirmation before `brew install`.
+- Do everything yourself. Only ask the user for things you cannot generate — the ElevenLabs API key, the MiMo API key (if they want voiceover), and confirmation before `brew install`.
 - Prefer a stable clone path like `~/Developer/video-use` (not `/tmp`, not `~/Downloads`).
 - The skill references helpers by bare name (`transcribe.py`, `render.py`). That works because SKILL.md and `helpers/` ship together — keep them as siblings when you register the skill.
 - After install, verify by running one real command against one real file. Don't declare success on file-existence checks alone.
@@ -89,9 +89,11 @@ Figure out which agent you are running under, and register once. A symlink of th
 
 If you can't tell which agent you're in, ask the user once: "which agent am I running under — Claude Code, Codex, or something else?" Then pick the right target.
 
-### 5. ElevenLabs API key
+### 5. API keys
 
-Scribe (ElevenLabs) does all transcription. Without a key, nothing transcribes.
+Scribe (ElevenLabs) does all transcription. Without an ElevenLabs key, nothing transcribes. MiMo TTS is optional and only needed for AI voiceover via `helpers/tts.py`.
+
+#### ElevenLabs (required for transcription)
 
 1. Check existing state in this order and stop at the first hit:
 
@@ -106,10 +108,12 @@ Scribe (ElevenLabs) does all transcription. Without a key, nothing transcribes.
 
     > I need an ElevenLabs API key for transcription (word-level timestamps, speaker diarization, filler tagging). Grab one at https://elevenlabs.io/app/settings/api-keys and paste it here — I'll write it to `~/Developer/video-use/.env`. Or if you already have it exported as `ELEVENLABS_API_KEY`, say "use env" and I'll skip.
 
-    When the user pastes a key, write it to `~/Developer/video-use/.env`:
+    When the user pastes a key, append it to `~/Developer/video-use/.env` (do not clobber an existing `.env` — it may already hold other keys):
 
     ```bash
-    printf 'ELEVENLABS_API_KEY=%s\n' "$KEY" > ~/Developer/video-use/.env
+    touch ~/Developer/video-use/.env
+    grep -q '^ELEVENLABS_API_KEY=' ~/Developer/video-use/.env \
+      || printf 'ELEVENLABS_API_KEY=%s\n' "$KEY" >> ~/Developer/video-use/.env
     chmod 600 ~/Developer/video-use/.env
     ```
 
@@ -125,12 +129,28 @@ Scribe (ElevenLabs) does all transcription. Without a key, nothing transcribes.
 
     `200` means the key works. `401` means the user pasted a wrong/expired key — ask once more and stop. Anything else (network, 5xx), move on and verify during first real transcription.
 
+#### MiMo (optional — for TTS voiceover only)
+
+The `tts.py` helper supports Xiaomi MiMo-V2.5-TTS for AI voiceover (preset voices, voice design, voice cloning). It is currently free and Chinese-first. If the user wants voiceover, ask whether they want to use MiMo:
+
+> Want to enable MiMo TTS for AI voiceover? It's currently free — grab an API key at https://mimo.mi.com and paste it here. Or say "skip" to stick with ElevenLabs for voiceover.
+
+If they provide a key, append it to the same `.env`:
+
+```bash
+grep -q '^MIMO_API_KEY=' ~/Developer/video-use/.env \
+  || printf 'MIMO_API_KEY=%s\n' "$MIMO_KEY" >> ~/Developer/video-use/.env
+```
+
+If the user doesn't plan to use MiMo TTS, skip this — ElevenLabs TTS also works for voiceover, and transcription is unaffected.
+
 ### 6. Verify end-to-end
 
 Run one real thing. Prefer the lightest verification that still proves the pipeline is wired up:
 
 ```bash
 python ~/Developer/video-use/helpers/timeline_view.py --help >/dev/null && echo "helpers OK"
+python ~/Developer/video-use/helpers/tts.py --help >/dev/null && echo "tts OK"
 ffprobe -version | head -1
 ```
 
