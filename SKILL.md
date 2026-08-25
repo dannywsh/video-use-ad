@@ -1,6 +1,6 @@
 ---
 name: video-use
-description: Edit any video by conversation. Transcribe, cut, color grade, generate overlay animations, burn subtitles — for talking heads, montages, tutorials, travel, interviews. No presets, no menus. Ask questions, confirm the plan, execute, iterate, persist. Production-correctness rules are hard; everything else is artistic freedom.
+description: Edit any video by conversation. Transcribe, cut, color grade, generate overlay animations, burn subtitles, add AI voiceover — for talking heads, montages, tutorials, travel, interviews. No presets, no menus. Ask questions, confirm the plan, execute, iterate, persist. Production-correctness rules are hard; everything else is artistic freedom.
 ---
 
 # Video Use
@@ -48,6 +48,7 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
     ├── transcripts/<name>.json  ← cached raw Scribe JSON
     ├── animations/slot_<id>/    ← per-animation source + render + reasoning
     ├── clips_graded/            ← per-segment extracts with grade + fades
+    ├── voiceover/               ← TTS audio (tts.py output)
     ├── master.srt               ← output-timeline subtitles
     ├── downloads/               ← yt-dlp outputs
     ├── verify/                  ← debug frames / timeline PNGs
@@ -57,9 +58,10 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
 
 ## Setup
 
-First-time install lives in `install.md` (clone, deps, ffmpeg, skill registration, API key). Don't re-run it every session; on cold start just verify:
+First-time install lives in `install.md` (clone, deps, ffmpeg, skill registration, API keys). Don't re-run it every session; on cold start just verify:
 
-- `ELEVENLABS_API_KEY` resolves — either in the environment or in `.env` at the video-use repo root. If missing, ask the user to paste one and write it to `.env` (never to the user's `<videos_dir>`).
+- `ELEVENLABS_API_KEY` resolves — either in the environment or in `.env` at the video-use repo root. If missing, ask the user to paste one and write it to `.env` (never to the user's `<videos_dir>`). Required for Scribe transcription and ElevenLabs TTS.
+- `MIMO_API_KEY` resolves (optional) — same `.env` / environment convention. Only needed for MiMo TTS voiceover. If the user only uses ElevenLabs, leave it unset.
 - `ffmpeg` + `ffprobe` on PATH.
 - Python deps installed (`uv sync` or `pip install -e .` inside the repo).
 - Node.js + npm available if the session needs HyperFrames or Remotion slots. HyperFrames currently requires Node.js 22+.
@@ -76,6 +78,7 @@ Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this
 - **`pack_transcripts.py --edit-dir <dir>`** — `transcripts/*.json` → `takes_packed.md` (phrase-level, break on silence ≥ 0.5s).
 - **`timeline_view.py <video> <start> <end>`** — filmstrip + waveform PNG. On-demand visual drill-down. **Not a scan tool** — use it at decision points, not constantly.
 - **`render.py <edl.json> -o <out>`** — per-segment extract → concat → overlays (PTS-shifted) → subtitles LAST. `--preview` for 720p fast. `--build-subtitles` to generate master.srt inline.
+- **`tts.py <text> -o <out>`** — text-to-speech for adding voiceover/narration. `--provider elevenlabs|mimo` (default elevenlabs). MiMo modes: preset voices (`--voice 冰糖|茉莉|苏打|白桦|Mia|Chloe|Milo|Dean`), voice design (`--mimo-model voicedesign --style "..."`), voice clone (`--mimo-model voiceclone --reference-audio sample.mp3`). `--style` adds natural-language direction. Outputs wav/mp3 ready to mix with ffmpeg.
 - **`grade.py <in> -o <out>`** — ffmpeg filter chain grade. Presets + `--filter '<raw>'` for custom.
 
 For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a sub-agent via the `Agent` tool.
@@ -84,9 +87,9 @@ For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a su
 
 1. **Inventory.** `ffprobe` every source. `transcribe_batch.py` on the directory. `pack_transcripts.py` to produce `takes_packed.md`. Sample one or two `timeline_view`s for a visual first impression.
 2. **Pre-scan for problems.** One pass over `takes_packed.md` to note verbal slips, obvious mis-speaks, or phrasings to avoid. Plain list, feed into the editor brief.
-3. **Converse.** Describe what you see in plain English. Ask questions *shaped by the material*. Collect: content type, target length/aspect, aesthetic/brand direction, pacing feel, must-preserve moments, must-cut moments, animation and grade preferences, subtitle needs. Do not use a fixed checklist — the right questions are different every time.
-4. **Propose strategy.** 4–8 sentences: shape, take choices, cut direction, animation plan, grade direction, subtitle style, length estimate. **Wait for confirmation.**
-5. **Execute.** Produce `edl.json` via the editor sub-agent brief. Drill into `timeline_view` at ambiguous moments. Build animations in parallel sub-agents. Apply grade per-segment. Compose via `render.py`.
+3. **Converse.** Describe what you see in plain English. Ask questions *shaped by the material*. Collect: content type, target length/aspect, aesthetic/brand direction, pacing feel, must-preserve moments, must-cut moments, animation and grade preferences, subtitle needs, voiceover needs. Do not use a fixed checklist — the right questions are different every time.
+4. **Propose strategy.** 4–8 sentences: shape, take choices, cut direction, animation plan, grade direction, subtitle style, voiceover plan, length estimate. **Wait for confirmation.**
+5. **Execute.** Produce `edl.json` via the editor sub-agent brief. Drill into `timeline_view` at ambiguous moments. Build animations in parallel sub-agents. Generate voiceover with `tts.py` if requested. Apply grade per-segment. Compose via `render.py`.
 6. **Preview.** `render.py --preview`.
 7. **Self-eval (before showing the user).** Run `timeline_view` on the **rendered output** (not the sources) at every cut boundary (±1.5s window). Check each image for:
    - Visual discontinuity / flash / jump at the cut
@@ -193,6 +196,38 @@ Alignment=2,MarginV=35
 **`natural-sentence`** (if you invent this mode) — narrative, documentary, education. 4–7 word chunks, sentence case, break on natural pauses, `MarginV=60–80`, larger font for readability, slightly wider max-width. No shipped force_style — design one if you need it.
 
 Invent a third style if neither fits. Hard rules: subtitles LAST (Rule 1), output-timeline offsets (Rule 5).
+
+## Voiceover / TTS (when requested)
+
+When the user wants AI narration, dubbing, or a synthetic voice added to the edit, use `helpers/tts.py`. It supports two providers behind one CLI:
+
+- **ElevenLabs** (`--provider elevenlabs`, default) — wide voice library via `--voice-id`, multilingual, MP3 output. Requires `ELEVENLABS_API_KEY`.
+- **MiMo** (`--provider mimo`) — Xiaomi MiMo-V2.5-TTS, Chinese-first, high-quality, currently free. Requires `MIMO_API_KEY`. Three modes:
+  - **Preset voice** (`--mimo-model tts`, default): `--voice 冰糖` (Chinese female), `茉莉` (Chinese female), `苏打` (Chinese male), `白桦` (Chinese male), `Mia`/`Chloe` (English female), `Milo`/`Dean` (English male), or `mimo_default`.
+  - **Voice design** (`--mimo-model voicedesign`): describe a voice in natural language via `--style`, e.g. `"一位温柔的中年女性，嗓音略带沙哑"`. No sample needed; `--style` is required.
+  - **Voice clone** (`--mimo-model voiceclone`): pass a 3–10s `.mp3`/`.wav` sample via `--reference-audio sample.mp3` (≤10 MB); MiMo clones the timbre.
+
+**Style control (MiMo):** `--style` takes a natural-language direction placed in the API's `user` message — e.g. `"用兴奋上扬的语调，语速稍快"` or the full director-mode format (角色/场景/指导). You can also embed audio tags directly in the synthesis text, e.g. `"(慵懒)再让我睡五分钟……"` or `"(东北话)哎呀妈呀，这天儿忒冷了！"`.
+
+**Typical workflow:**
+
+1. Generate the voiceover file into `<edit>/voiceover/`:
+   ```bash
+   python helpers/tts.py "欢迎来到本期视频" -o edit/voiceover/narration.wav \
+     --provider mimo --voice 冰糖 --style "用轻快活泼的语调"
+   ```
+2. Measure its duration with `ffprobe` if animations need to sync to it.
+3. Mix it into the rendered video with ffmpeg — duck the original audio under the voiceover, or replace it entirely:
+   ```bash
+   # Mix voiceover over original audio (original ducked to 30%)
+   ffmpeg -i final.mp4 -i edit/voiceover/narration.wav -filter_complex \
+     "[0:a]volume=0.3[bg];[bg][1:a]amix=inputs=2:duration=longest:dropout_transition=2[a]" \
+     -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 192k -shortest final_voiced.mp4
+   ```
+   If the voiceover should start at a specific offset, use `adelay` on the voiceover track before mixing.
+4. If the voiceover drives animation timing, generate it **before** building overlays so you can sync reveals to it (see the animation payoff-timing rule).
+
+Hard rules: never commit API keys; write them only to the repo-root `.env`. Generated voiceover files go under `<videos_dir>/edit/voiceover/`, never inside the skill directory.
 
 ## Animations (when requested)
 
