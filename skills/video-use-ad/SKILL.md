@@ -23,7 +23,7 @@ description: "ACG 风格商品宣传广告视频制作工作流（video-use 的�
 ## 执行流程
 
 1. **清点素材**：`ffprobe` 检查视频素材，列出素材文件夹全部图片，按"商品主图 / 效果图 / 详情图"分类，剔除文字过多的图片。
-2. **收集视频素材**：用 yt-dlp 从 YouTube 检索并下载相关动漫、游戏的 OP / ED / Trailer 视频，用于穿插片段。
+2. **收集视频素材**：视频素材可来自 **YouTube** 与 **Bilibili** 两个平级来源，择一或混用，不得偏废。从 YouTube 取素材时用 `yt-dlp` 检索并下载相关动漫、游戏视频的 OP / ED / Trailer；从 Bilibili 取素材时用 `helpers/bilibili_src.py`（见 §视频素材规范）检索并下载同类片段。**仅当素材来自 Bilibili 时**，下载该视频前必须先运行 `check-watermark`，水印命中则弃用该视频；YouTube/其他平台来源的视频无需水印检测。类型限定见 §视频素材规范。
 3. **检索设定**：在 <https://zh.moegirl.org.cn/> 查找产品相关动漫设定与梗，供文案使用。
 4. **撰写文案**：按 §文案规范 起草口播文案，并给出每段对应的画面/图片搭配方案。
 5. **确认方案**：把文案 + 素材搭配展示给用户，确认后再制作（文案是创作性产物，先确认避免返工）。
@@ -43,7 +43,12 @@ description: "ACG 风格商品宣传广告视频制作工作流（video-use 的�
 
 ## 视频素材规范
 
-- **来源优先级**：YouTube 中相关动漫、游戏视频的 **OP / ED / Trailer**。
+- **来源优先级**：视频素材可来自 **YouTube** 或 **Bilibili** 两个平级来源，均**仅限相关动漫、游戏视频的 OP / ED / Trailer 类型**；**明确排除玩家二创、同人剪辑、游戏实况、reaction 等任何其他来源类型**。两者择一或混用，按素材质量与可用性决定。
+  - **Bilibili 素材获取**（复用主技能 `helpers/bilibili_src.py`）：
+    - 检索：`python helpers/bilibili_src.py search "<关键词>" --n 5`（返回 bvid / 标题 / UP主 / 时长）。
+    - 下载前必先做水印检测（仅 B 站视频）：`python helpers/bilibili_src.py check-watermark <BVid>`，命中即弃用该视频；检测查四角边缘细节（B 站水印常见于右上角），属启发式，重要片段建议肉眼抽检。YouTube/其他平台视频免检。
+    - 取素材：`python helpers/bilibili_src.py download <BVid> --video-out ...` 取片段、`--audio-out` 取 BGM（音频无视觉水印，不受水印检测限制）。
+    - 视频流 Cookie：命令加 `--cookies-from-browser <chrome|firefox|edge|safari|brave>`，yt-dlp 直接读本机已登录 B 站的浏览器 cookie（无需手动导出）；匿名则仅音频可用。
 - 在图片流之间**适当穿插**这些片段（每次 1–3 秒为宜），增强 ACG 氛围，不喧宾夺主。
 
 ## 文案规范（口播脚本）
@@ -67,7 +72,7 @@ description: "ACG 风格商品宣传广告视频制作工作流（video-use 的�
 - **BGM 恒定**：不随人声出现、停顿或强弱自动降低；**不使用侧链压缩或自动闪避**（ducking）。
 - **淡入淡出**：BGM 仅开头 **0.5 秒**淡入、结尾 **1.1 秒**淡出，避免突兀起止；人声开头 **0.05 秒**淡入。
 - **防削波**：最终混音限制峰值（loudnorm / alimiter），避免削波失真。
-- BGM 来源：可从下载的视频素材中提取，或使用 `<风格>` 的 BGM。
+- BGM 来源：可从下载的视频素材中提取，或使用 `<风格>` 的 BGM，或直接从 Bilibili 下载相关动漫、游戏 OST 原声（`bilibili_src.py download <BVid> --audio-out`，音频无视觉水印问题，无需水印检测）。
 
 ## 字幕规范（中文单行小字幕）
 
