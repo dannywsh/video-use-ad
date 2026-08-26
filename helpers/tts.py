@@ -43,9 +43,13 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
 import os
+import re
+import subprocess
 import sys
+import wave
 from pathlib import Path
 
 import requests
@@ -178,6 +182,26 @@ def _encode_reference_audio(path: Path) -> str:
     return f"data:{mime};base64,{b64}"
 
 
+def reference_duration_seconds(path: Path) -> float:
+    """Read a reference-audio duration with ffprobe.
+
+    Input: an existing audio path. Returns: its duration in seconds.
+    Raises ValueError when the duration cannot be measured.
+    """
+    proc = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", str(path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    try:
+        return float(proc.stdout.strip())
+    except ValueError as exc:
+        raise ValueError(f"could not determine reference-audio duration: {path}") from exc
+
+
 def synthesize_mimo(
     text: str,
     api_key: str,
@@ -255,6 +279,62 @@ def synthesize_mimo(
     return base64.b64decode(audio_b64)
 
 
+def split_text_for_mimo(text: str, maximum_characters: int) -> list[str]:
+    """Split a long MiMo script at sentence boundaries without omitting text.
+
+    Input: source script and a positive per-request character limit. Returns: ordered
+    synthesis chunks. A very long punctuation-free clause falls back to hard splits.
+    """
+    if maximum_characters <= 0 or len(text) <= maximum_characters:
+        return [text]
+    clauses = [part for part in re.split(r"(?<=[。！？；.!?])", text) if part]
+    chunks: list[str] = []
+    current = ""
+    for clause in clauses:
+        if current and len(current) + len(clause) > maximum_characters:
+            chunks.append(current)
+            current = clause
+        else:
+            current += clause
+        while len(current) > maximum_characters:
+            chunks.append(current[:maximum_characters])
+            current = current[maximum_characters:]
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def concatenate_wav_chunks(chunks: list[bytes]) -> bytes:
+    """Concatenate compatible WAV responses without re-encoding.
+
+    Input: WAV byte payloads returned by MiMo. Returns: one WAV byte payload.
+    Raises ValueError if MiMo returns incompatible audio stream parameters.
+    """
+    if not chunks:
+        raise ValueError("cannot concatenate an empty list of WAV chunks")
+    output = io.BytesIO()
+    with wave.open(io.BytesIO(chunks[0]), "rb") as first:
+        params = first.getparams()
+        frames = [first.readframes(first.getnframes())]
+        format_signature = (
+            first.getnchannels(), first.getsampwidth(), first.getframerate(),
+            first.getcomptype(), first.getcompname(),
+        )
+    for chunk in chunks[1:]:
+        with wave.open(io.BytesIO(chunk), "rb") as part:
+            if (
+                part.getnchannels(), part.getsampwidth(), part.getframerate(),
+                part.getcomptype(), part.getcompname(),
+            ) != format_signature:
+                raise ValueError("MiMo returned incompatible WAV parameters between chunks")
+            frames.append(part.readframes(part.getnframes()))
+    with wave.open(output, "wb") as merged:
+        merged.setparams(params)
+        for frame_bytes in frames:
+            merged.writeframes(frame_bytes)
+    return output.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -311,6 +391,14 @@ def main() -> None:
         ),
     )
     ap.add_argument(
+        "--style-prefix",
+        default=None,
+        help=(
+            "Required style text prepended before --style. Use this when a "
+            "workflow has non-negotiable delivery constraints."
+        ),
+    )
+    ap.add_argument(
         "--style",
         default=None,
         help=(
@@ -325,6 +413,15 @@ def main() -> None:
         default=None,
         help="Path to a .mp3/.wav sample for MiMo voice cloning (<=10 MB)",
     )
+    ap.add_argument(
+        "--mimo-max-chars",
+        type=int,
+        default=0,
+        help=(
+            "Split long MiMo text at sentence boundaries before synthesis, then "
+            "losslessly merge WAV responses. 0 disables splitting (default)."
+        ),
+    )
 
     args = ap.parse_args()
 
@@ -337,6 +434,12 @@ def main() -> None:
         ap.error("provide text as a positional argument or --text-file")
     if not text:
         sys.exit("error: text is empty")
+
+    # A workflow-owned prefix must precede user direction so callers cannot
+    # accidentally replace mandatory speech constraints with --style.
+    style_instruction = " ".join(
+        part.strip() for part in (args.style_prefix, args.style) if part and part.strip()
+    ) or None
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -355,22 +458,36 @@ def main() -> None:
     else:  # mimo
         api_key = load_api_key("mimo")
         model = MIMO_MODELS[args.mimo_model]
-        if args.mimo_model == "voicedesign" and not args.style:
+        if args.mimo_model == "voicedesign" and not style_instruction:
             ap.error("--style is required for voicedesign (it is the voice description)")
         if args.mimo_model == "voiceclone" and not args.reference_audio:
             ap.error("--reference-audio is required for voiceclone")
         if args.reference_audio and not args.reference_audio.exists():
             sys.exit(f"reference audio not found: {args.reference_audio}")
-        print(f"[mimo:{model}] synthesizing {len(text)} chars -> {args.output.name}")
-        audio = synthesize_mimo(
-            text=text,
-            api_key=api_key,
-            model=model,
-            voice=args.voice or MIMO_DEFAULT_VOICE,
-            style_instruction=args.style,
-            reference_audio=args.reference_audio,
-            audio_format="wav",
-        )
+        if args.mimo_model == "voiceclone" and args.reference_audio:
+            duration = reference_duration_seconds(args.reference_audio)
+            if not 3.0 <= duration <= 10.0:
+                ap.error(
+                    "voiceclone reference audio must be 3–10 seconds; "
+                    f"got {duration:.2f}s. Extract a clean sample before synthesis."
+                )
+        chunks = split_text_for_mimo(text, args.mimo_max_chars)
+        if len(chunks) > 1 and args.output.suffix.lower() != ".wav":
+            ap.error("--mimo-max-chars requires a .wav output so chunks can be losslessly merged")
+        print(f"[mimo:{model}] synthesizing {len(text)} chars in {len(chunks)} chunk(s) -> {args.output.name}")
+        audio_chunks = [
+            synthesize_mimo(
+                text=chunk,
+                api_key=api_key,
+                model=model,
+                voice=args.voice or MIMO_DEFAULT_VOICE,
+                style_instruction=style_instruction,
+                reference_audio=args.reference_audio,
+                audio_format="wav",
+            )
+            for chunk in chunks
+        ]
+        audio = concatenate_wav_chunks(audio_chunks) if len(audio_chunks) > 1 else audio_chunks[0]
 
     args.output.write_bytes(audio)
     size_kb = args.output.stat().st_size / 1024
