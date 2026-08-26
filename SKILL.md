@@ -69,6 +69,7 @@ First-time install lives in `install.md` (clone, deps, ffmpeg, skill registratio
 - `yt-dlp`, HyperFrames, Remotion, Manim installed only on first use.
 - First-use animation setup happens inside the slot directory, never at the video-use repo root. HyperFrames can be invoked with `npx --yes hyperframes ...`; Remotion can be scaffolded with `npx create-video@latest` or installed as a project-local dependency before using its `remotion render` command.
 - This skill vendors `skills/manim-video/`. Read its SKILL.md when building a Manim slot.
+- This skill vendors `skills/video-use-ad/`. Read its SKILL.md when the task is an ACG-style product promo video (ACG 风格商品宣传广告视频) — it is a fixed production recipe (image/video selection, script style, 1920×1080 blur backdrop, LUFS mixing, single-line subtitles, MiMo voice clone) layered on top of the main skill's helpers.
 
 Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this SKILL.md. Resolve their paths relative to the directory containing this file — the skill is typically symlinked at `~/.claude/skills/video-use/` or `~/.codex/skills/video-use/`.
 

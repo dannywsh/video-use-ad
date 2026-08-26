@@ -81,7 +81,7 @@ video-use-ad/
 │   ├── grade.py              # 渲染输出自检
 │   └── tts.py                # AI 配音（ElevenLabs + MiMo 双 provider）
 ├── static/               # 文档图片资源
-├── skills/               # 子技能（动画插槽等）
+├── skills/               # 子技能（manim-video、video-use-ad 等）
 ├── pyproject.toml        # Python 依赖
 ├── .env.example          # API Key 模板
 └── poster.html           # 宣传页
@@ -142,6 +142,31 @@ python helpers/tts.py --provider mimo --mimo-model voiceclone --reference-audio 
 ```
 
 MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，非流式调用返回 base64 编码的 wav 音频。
+
+## 广告视频制作（video-use-ad 子技能）
+
+仓库内置 **video-use-ad** 子技能（`skills/video-use-ad/`）：一份 ACG 风格商品宣传广告视频的**固定生产配方**，包装在通用剪辑流程之上。适合制作约 1 分钟的"云逛式"商品宣传片——商品主图轮播 + 动漫 OP/ED/Trailer 片段穿插 + ACG 梗口播文案 + MiMo 声音克隆配音 + 中文单行小字幕。
+
+### 示例用法
+
+把下面的提示词粘贴给 AI 助手（把尖括号内容换成你的实际信息）：
+
+```text
+使用 skill: Video Use 任务：制作一个时长一分钟左右关于「<产品名称>」的宣传广告视频，
+素材在 <文件夹路径> 文件夹中。参考声音用 <.mp3>，BGM 风格：<风格>。
+```
+
+### 它会做什么
+
+- **图片素材**：多用商品主图、少量详情图、避开文字过多的图；高度不足的图等比放大占满画面高度，超高的图缓慢滚动播放
+- **视频素材**：从 YouTube 找相关动漫/游戏 OP、ED、Trailer 适当穿插
+- **文案**：资讯类云逛口播，多放动漫梗、结合效果图与动漫设定（查 moegirl），纯口语化、不分点、不出现逻辑总结词
+- **画面**：1920×1080，高斯模糊背景填充
+- **混音**：人声 -13 LUFS，BGM 低于人声 20dB（约 -27 LUFS）且恒定不闪避，BGM 仅开头 0.5s 淡入、结尾 1.1s 淡出，人声 0.05s 淡入，限幅防削波
+- **字幕**：中文单行小字幕（Microsoft YaHei 常规字重），底部安全区 14px，深色细描边，标点替换为空格，最后烧录保证最上层
+- **配音**：mimo-v2.5-tts-voiceclone 声音克隆，普通话
+
+完整规格见 [`skills/video-use-ad/SKILL.md`](./skills/video-use-ad/SKILL.md)。
 
 ## 设计原则
 
