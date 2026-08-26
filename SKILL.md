@@ -322,11 +322,12 @@ Match the source unless the user asked for something specific. Common targets: `
     {"file": "edit/animations/slot_1/render.mp4", "start_in_output": 0.0, "duration": 5.0}
   ],
   "subtitles": "edit/master.srt",
+  "subtitle_style": "FontName=Microsoft YaHei,FontSize=14,PrimaryColour=&H00FF8FCF,OutlineColour=&H00201828,BorderStyle=1,Outline=0.6,Shadow=0,Alignment=2,MarginV=5",
   "total_duration_s": 87.4
 }
 ```
 
-`grade` is a preset name or raw ffmpeg filter. `overlays` are rendered animation clips. `subtitles` is optional and applied LAST.
+`grade` is a preset name or raw ffmpeg filter. `overlays` are rendered animation clips. `subtitles` is optional and applied LAST. `subtitle_style` is an optional libass `force_style` string; use it when a specialized workflow requires a fixed caption treatment.
 
 ## Memory — `project.md`
 

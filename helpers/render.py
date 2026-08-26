@@ -497,6 +497,7 @@ def build_final_composite(
     base_path: Path,
     overlays: list[dict],
     subtitles_path: Path | None,
+    subtitle_force_style: str | None,
     out_path: Path,
     edit_dir: Path,
 ) -> None:
@@ -538,9 +539,8 @@ def build_final_composite(
     # Subtitles LAST — Rule 1
     if has_subs:
         subs_abs = str(subtitles_path.resolve()).replace(":", r"\:").replace("'", r"\'")
-        filter_parts.append(
-            f"{current}subtitles='{subs_abs}':force_style='{SUB_FORCE_STYLE}'[outv]"
-        )
+        force_style = subtitle_force_style or SUB_FORCE_STYLE
+        filter_parts.append(f"{current}subtitles='{subs_abs}':force_style='{force_style}'[outv]")
         out_label = "[outv]"
     else:
         # Rename the last overlay output to [outv] for consistency
@@ -640,13 +640,16 @@ def main() -> None:
 
     # 4. Composite (overlays + subtitles LAST) → intermediate (pre-loudnorm) path
     overlays = edl.get("overlays") or []
+    subtitle_force_style = edl.get("subtitle_style")
+    if subtitle_force_style is not None and not isinstance(subtitle_force_style, str):
+        sys.exit("EDL subtitle_style must be a libass force_style string")
     if args.no_loudnorm:
         # Composite directly to final output
-        build_final_composite(base_path, overlays, subs_path, out_path, edit_dir)
+        build_final_composite(base_path, overlays, subs_path, subtitle_force_style, out_path, edit_dir)
     else:
         # Composite to a temp file, then run loudnorm → final output
         tmp_composite = out_path.with_suffix(".prenorm.mp4")
-        build_final_composite(base_path, overlays, subs_path, tmp_composite, edit_dir)
+        build_final_composite(base_path, overlays, subs_path, subtitle_force_style, tmp_composite, edit_dir)
         print("loudness normalization → social-ready (-14 LUFS / -1 dBTP / LRA 11)")
         apply_loudnorm_two_pass(tmp_composite, out_path, preview=args.draft)
         tmp_composite.unlink(missing_ok=True)
