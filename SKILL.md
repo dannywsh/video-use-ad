@@ -31,6 +31,7 @@ These are the things where deviation produces silent failures or broken output. 
 10. **Parallel sub-agents for multiple animations.** Never sequential. Spawn N at once via the `Agent` tool; total wall time ≈ slowest one.
 11. **Strategy confirmation before execution.** Never touch the cut until the user has approved the plain-English plan.
 12. **All session outputs in `<videos_dir>/edit/`.** Never write inside the `video-use/` project directory.
+13. **TTS narration subtitles are verbatim and final-audio aligned.** Generate captions only after the final TTS audio exists. Every spoken word, including brand names, qualifiers, and fillers the user expects, must appear in the subtitles in the same order; split only at natural semantic boundaries and never summarize, paraphrase, or omit text. Derive timestamps from word-level transcription or forced alignment of that exact final audio, then convert them to output-timeline offsets. Never hand-estimate subtitle timings from the script or total runtime.
 
 Everything else in this document is a worked example. Deviate whenever the material calls for it.
 
@@ -226,6 +227,7 @@ When the user wants AI narration, dubbing, or a synthetic voice added to the edi
    ```
    If the voiceover should start at a specific offset, use `adelay` on the voiceover track before mixing.
 4. If the voiceover drives animation timing, generate it **before** building overlays so you can sync reveals to it (see the animation payoff-timing rule).
+5. If subtitles are required, transcribe or force-align the **generated final voiceover file** at word level before creating `master.srt`. Use the narration source text only to verify the alignment; do not write a shortened caption version. Compare the rendered SRT text against the narration text before delivery and treat any missing, reordered, or paraphrased spoken content as a blocking defect.
 
 Hard rules: never commit API keys; write them only to the repo-root `.env`. Generated voiceover files go under `<videos_dir>/edit/voiceover/`, never inside the skill directory.
 
