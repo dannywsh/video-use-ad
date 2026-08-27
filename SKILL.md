@@ -61,8 +61,10 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
 
 First-time install lives in `install.md` (clone, deps, ffmpeg, skill registration, API keys). Don't re-run it every session; on cold start just verify:
 
-- `ELEVENLABS_API_KEY` resolves — either in the environment or in `.env` at the video-use repo root. If missing, ask the user to paste one and write it to `.env` (never to the user's `<videos_dir>`). Required for Scribe transcription and ElevenLabs TTS.
-- `MIMO_API_KEY` resolves (optional) — same `.env` / environment convention. Only needed for MiMo TTS voiceover. If the user only uses ElevenLabs, leave it unset.
+- **Credential discovery (mandatory before asking the user):** the canonical key file is `<skill_root>/.env`, where `<skill_root>` is the parent directory of the actual helper after resolving its path — e.g. `Path(helpers/tts.py).resolve().parent.parent / ".env"`. Do **not** infer this from the current workspace, source-video directory, or a hard-coded `~/Developer/...` example. Then check `<cwd>/.env`, then exported environment variables. This is the exact lookup order used by `helpers/tts.py` and `helpers/transcribe.py`.
+- Run the check for **both** key names with the helpers' parsing semantics: strip whitespace around the key name and value, accept quoted values, and treat an empty value as missing. Do not use a strict `^KEY=` regex, because a valid `.env` may contain spaces around `=`. Never print a key or its prefix in tool output.
+- `ELEVENLABS_API_KEY` resolves from that lookup — required for Scribe transcription and ElevenLabs TTS. Ask the user only after the mandatory discovery check fails, then write a supplied key to `<skill_root>/.env` (never to the user's `<videos_dir>`).
+- `MIMO_API_KEY` resolves using the same lookup — required only for MiMo TTS voiceover. If MiMo is not used, leave it unset.
 - `ffmpeg` + `ffprobe` on PATH.
 - Python deps installed (`uv sync` or `pip install -e .` inside the repo).
 - Node.js + npm available if the session needs HyperFrames or Remotion slots. HyperFrames currently requires Node.js 22+.
