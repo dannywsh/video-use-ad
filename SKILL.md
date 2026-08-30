@@ -324,7 +324,7 @@ Match the source unless the user asked for something specific. Common targets: `
     {"file": "edit/animations/slot_1/render.mp4", "start_in_output": 0.0, "duration": 5.0}
   ],
   "subtitles": "edit/master.srt",
-  "subtitle_style": "FontName=Microsoft YaHei,FontSize=14,PrimaryColour=&H00FF8FCF,OutlineColour=&H00201828,BorderStyle=1,Outline=0.6,Shadow=0,Alignment=2,MarginV=5",
+  "subtitle_style": "PlayResX=1920,PlayResY=1080,FontName=Hiragino Sans GB,FontSize=96,Bold=1,Spacing=4,PrimaryColour=&H00FFFFFF,OutlineColour=&H00201828,BorderStyle=1,Outline=3,Shadow=0,Alignment=2,MarginL=64,MarginR=64,MarginV=8,WrapStyle=2",
   "total_duration_s": 87.4
 }
 ```
