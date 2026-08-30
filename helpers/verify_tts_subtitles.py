@@ -77,8 +77,8 @@ def main() -> None:
     parser.add_argument(
         "--max-chars",
         type=int,
-        default=14,
-        help="Maximum normalized characters per cue; ad burns use 14",
+        default=24,
+        help="Maximum normalized characters per cue; ad burns use 24",
     )
     args = parser.parse_args()
     srt_text = args.srt.read_text(encoding="utf-8")

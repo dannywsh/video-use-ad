@@ -11,15 +11,15 @@ from pathlib import Path
 # Design tokens are 1080p pixels. Helpers scale them to the file being burned.
 AD_DESIGN_HEIGHT = 1080
 AD_FONT_NAME = "Hiragino Sans GB"
-AD_FONT_SIZE = 96
+AD_FONT_SIZE = 72
 AD_BOLD = 1
-AD_SPACING = 4
+AD_SPACING = 1
 AD_OUTLINE = 3
 AD_SHADOW = 0
 AD_MARGIN_V = 8
 AD_MARGIN_X = 64
 AD_WRAP_STYLE = 2
-AD_MAX_CHARS = 14
+AD_MAX_CHARS = 24
 AD_DEFAULT_PRIMARY = "&H00FFFFFF"
 AD_OUTLINE_COLOUR = "&H00201828"
 

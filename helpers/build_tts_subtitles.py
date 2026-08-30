@@ -166,7 +166,7 @@ def main() -> None:
         "--max-chars",
         type=int,
         default=32,
-        help="Maximum normalized characters per single-line cue; ad burns must use 14",
+        help="Maximum normalized characters per single-line cue; ad burns must use 24",
     )
     args = parser.parse_args()
     script = args.script.read_text(encoding="utf-8").strip()
