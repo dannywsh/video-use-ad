@@ -26,6 +26,32 @@ def srt_timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
 
 
+def split_overlong_caption(text: str, maximum_characters: int) -> list[str]:
+    """Hard-split one caption so no piece exceeds the single-line character budget.
+
+    Input: caption text and max normalized characters. Returns: one or more pieces.
+    """
+    if maximum_characters < 1:
+        raise ValueError("maximum_characters must be >= 1")
+    if len(normalized_characters(text)) <= maximum_characters:
+        return [text] if normalized_characters(text) else []
+    pieces: list[str] = []
+    current = ""
+    current_count = 0
+    for char in text:
+        extra = len(normalized_characters(char))
+        if current and current_count + extra > maximum_characters:
+            pieces.append(current)
+            current = char
+            current_count = extra
+        else:
+            current += char
+            current_count += extra
+    if current:
+        pieces.append(current)
+    return [piece for piece in pieces if normalized_characters(piece)]
+
+
 def split_caption_text(script: str, maximum_characters: int) -> list[str]:
     """Split a script into single-line semantic captions without dropping text.
 
@@ -39,12 +65,12 @@ def split_caption_text(script: str, maximum_characters: int) -> list[str]:
         candidate = current + clause
         current_ends_sentence = current.rstrip().endswith(("。", "！", "？", "；"))
         if current and (current_ends_sentence or len(normalized_characters(candidate)) > maximum_characters):
-            chunks.append(current)
+            chunks.extend(split_overlong_caption(current, maximum_characters))
             current = clause
         else:
             current = candidate
     if current:
-        chunks.append(current)
+        chunks.extend(split_overlong_caption(current, maximum_characters))
     return [chunk for chunk in chunks if normalized_characters(chunk)]
 
 
@@ -110,6 +136,11 @@ def build_srt(script: str, words: list[dict], maximum_characters: int) -> str:
         end_word = spoken_words[asr_char_to_word[end_asr]]
         caption = re.sub(r"[^\w\s]", " ", chunk)
         caption = re.sub(r"\s+", " ", caption).strip()
+        caption = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])", "", caption)
+        if "\n" in caption:
+            raise ValueError("caption cue contains a line break; ad subtitles must stay one line")
+        if len(normalized_characters(caption)) > maximum_characters:
+            raise ValueError("caption cue exceeds the single-line character budget")
         lines.extend(
             [
                 str(number),
@@ -131,7 +162,12 @@ def main() -> None:
     parser.add_argument("script", type=Path, help="Exact final text sent to TTS")
     parser.add_argument("transcript", type=Path, help="Word-level ASR JSON of that final audio")
     parser.add_argument("-o", "--output", type=Path, required=True, help="Output SRT path")
-    parser.add_argument("--max-chars", type=int, default=32, help="Maximum normalized characters per single-line cue")
+    parser.add_argument(
+        "--max-chars",
+        type=int,
+        default=32,
+        help="Maximum normalized characters per single-line cue; ad burns must use 14",
+    )
     args = parser.parse_args()
     script = args.script.read_text(encoding="utf-8").strip()
     transcript = json.loads(args.transcript.read_text(encoding="utf-8"))
