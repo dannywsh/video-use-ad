@@ -6,7 +6,7 @@
 
 **对话驱动的视频剪辑工具** — 把原始素材丢进文件夹，和 AI 助手对话，得到 `final.mp4`。适用于口播、混剪、教程、旅行、访谈等任意内容，无需预设或菜单。
 
-本项目基于 [browser-use/video-use](https://github.com/browser-use/video-use) 二次开发，新增了小米 MiMo TTS 配音支持。
+本项目基于 [browser-use/video-use](https://github.com/browser-use/video-use) 二次开发，新增了小米 MiMo 与 Fish Audio TTS 配音支持。
 
 ## 功能特性
 
@@ -14,7 +14,7 @@
 - **自动调色**每段素材（暖调电影感、中性通透，或自定义 ffmpeg 链）
 - **30ms 音频淡入淡出**，每个剪辑点都不会出现爆音
 - **烧录字幕**，默认两词大写分块，完全可自定义
-- **AI 配音（TTS）**，支持 ElevenLabs 和小米 MiMo 双 provider，预置音色 / 风格定制 / 声音克隆三种模式
+- **AI 配音（TTS）**，支持 ElevenLabs、MiMo、Fish Audio 三个 provider；Fish Audio 支持私有可复用的声音克隆
 - **生成动画叠加层**，支持 HyperFrames、Remotion、Manim 或 PIL，并行子代理逐个生成
 - **渲染输出自检**，在每个剪辑边界自动评估后才展示结果
 - **会话记忆持久化**到 `project.md`，下次继续编辑时无缝衔接
@@ -33,6 +33,7 @@ Read install.md first to install this repo, wire up ffmpeg, register the skill w
 
 - **ElevenLabs API Key**（必需）— 用于语音转文字（Scribe 转录），在 [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys) 获取
 - **MiMo API Key**（可选）— 用于 AI 配音，在 [mimo.mi.com](https://mimo.mi.com) 获取，目前免费
+- **Fish Audio API Key**（可选）— 用于高保真、可复用的声音克隆，在 [Fish Audio](https://fish.audio) 获取
 
 然后进入素材文件夹启动助手：
 
@@ -63,7 +64,7 @@ brew install yt-dlp             # 可选，用于下载在线素材
 
 # 3. 配置 API Key
 cp .env.example .env
-$EDITOR .env                    # 填入 ELEVENLABS_API_KEY（必需）和 MIMO_API_KEY（可选）
+$EDITOR .env                    # 填入 ELEVENLABS_API_KEY（必需）、MIMO_API_KEY 与 FISH_API_KEY（可选）
 ```
 
 ## 项目结构
@@ -79,7 +80,7 @@ video-use-ad/
 │   ├── timeline_view.py      # 生成胶片+波形+文字标签的可视化图
 │   ├── render.py             # EDL 渲染为 final.mp4
 │   ├── grade.py              # 渲染输出自检
-│   └── tts.py                # AI 配音（ElevenLabs + MiMo 双 provider）
+│   └── tts.py                # AI 配音（ElevenLabs + MiMo + Fish Audio）
 ├── static/               # 文档图片资源
 ├── skills/               # 子技能（manim-video、video-use-ad 等）
 ├── pyproject.toml        # Python 依赖
@@ -120,7 +121,7 @@ AI 从不"看"视频，而是**读**视频 — 通过两层信息获得词级精
 
 ## AI 配音（TTS）
 
-`helpers/tts.py` 统一支持两个 provider：
+`helpers/tts.py` 统一支持三个 provider。助手会按提示词选择：短音频快速克隆、预置音色或文本设计选 MiMo；需要保留并复用某个真实声线时选 Fish Audio；已指定 ElevenLabs 音色或希望用其音色库时选 ElevenLabs。使用声音克隆前，请确认你拥有该声音的授权。
 
 ### ElevenLabs（默认）
 
@@ -142,6 +143,25 @@ python helpers/tts.py --provider mimo --mimo-model voiceclone --reference-audio 
 ```
 
 MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，非流式调用返回 base64 编码的 wav 音频。
+
+### Fish Audio（私有可复用声音克隆）
+
+```bash
+# 从干净的单人参考音频创建私有音色并合成。支持 wav/mp3/m4a/opus，建议每段至少 10 秒。
+python helpers/tts.py --provider fish --reference-audio sample.wav \
+  --fish-voice-title "品牌旁白" --text "你好" --output out.mp3
+
+# 后续复用首次执行打印的 Fish voice ID。
+python helpers/tts.py --provider fish --fish-voice-id <voice_id> \
+  --text "下一段旁白" --output next.mp3
+
+# 进阶调参：JSON 会传给 Fish Audio 的 TTS 请求。
+python helpers/tts.py --provider fish --fish-voice-id <voice_id> \
+  --extra_params '{"temperature":0.5,"top_p":0.7,"prosody":{"speed":1.1}}' \
+  --text "更稳定、略快的旁白" --output tuned.mp3
+```
+
+Fish Audio 克隆始终创建为 `private`；其 API Key 置于同一 `.env` 的 `FISH_API_KEY`。`--extra_params` 仅适用于 Fish，接收 JSON 对象；可调整 `temperature`、`top_p`、`repetition_penalty`、`chunk_length`、`latency`、`prosody` 等。`top_k` 会原样透传以兼容服务端扩展，但不在当前公开字段列表中。CLI 会保护文本、声线 ID、输出格式与模型选择，不能通过该参数覆盖。
 
 ## 广告视频制作（video-use-ad 子技能）
 

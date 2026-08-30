@@ -15,7 +15,7 @@ Three things must exist on this machine:
 
 1. The `video-use` repo cloned somewhere stable.
 2. `ffmpeg` on `$PATH` (plus optional `yt-dlp` for online sources).
-3. An ElevenLabs API key in `.env` at the repo root (for Scribe transcription). Optionally a MiMo API key in the same `.env` for TTS voiceover.
+3. An ElevenLabs API key in `.env` at the repo root (for Scribe transcription). Optionally add MiMo and Fish Audio API keys in the same `.env` for TTS voiceover.
 
 And one thing must be true about the current agent:
 
@@ -23,7 +23,7 @@ And one thing must be true about the current agent:
 
 ## Install prompt contract
 
-- Do everything yourself. Only ask the user for things you cannot generate — the ElevenLabs API key, the MiMo API key (if they want voiceover), and confirmation before `brew install`.
+- Do everything yourself. Only ask the user for things you cannot generate — the ElevenLabs API key, MiMo/Fish Audio API keys (if they want those voiceover providers), and confirmation before `brew install`.
 - Prefer a stable clone path like `~/Developer/video-use` (not `/tmp`, not `~/Downloads`).
 - The skill references helpers by bare name (`transcribe.py`, `render.py`). That works because SKILL.md and `helpers/` ship together — keep them as siblings when you register the skill.
 - After install, verify by running one real command against one real file. Don't declare success on file-existence checks alone.
@@ -143,6 +143,18 @@ grep -q '^MIMO_API_KEY=' ~/Developer/video-use/.env \
 ```
 
 If the user doesn't plan to use MiMo TTS, skip this — ElevenLabs TTS also works for voiceover, and transcription is unaffected.
+
+#### Fish Audio (optional — persistent private voice cloning)
+
+Use Fish Audio when the user wants a reusable clone of an authorized speaker's voice. Ask for the key only after confirming they have the right to clone the supplied voice. Add it to the same repo-root `.env` without replacing other keys:
+
+```bash
+grep -q '^FISH_API_KEY=' ~/Developer/video-use/.env \
+  || printf 'FISH_API_KEY=%s\n' "$FISH_KEY" >> ~/Developer/video-use/.env
+chmod 600 ~/Developer/video-use/.env
+```
+
+`helpers/tts.py --provider fish --reference-audio sample.wav ...` creates a private model and prints its reusable voice ID. Fish Audio accepts `.wav`, `.mp3`, `.m4a`, and `.opus`; clean, single-speaker clips of at least 10 seconds are recommended. Do not print or commit the key.
 
 ### 6. Verify end-to-end
 

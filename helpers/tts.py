@@ -6,6 +6,7 @@ Unified interface for multiple text-to-speech providers:
   - mimo:       Xiaomi MiMo-V2.5-TTS (MIMO_API_KEY)
                 Supports preset voices, text-based voice design, and
                 audio-sample voice cloning.
+  - fish:       Fish Audio TTS and persistent voice cloning (FISH_API_KEY)
 
 Output is a plain audio file (wav/mp3) that can be mixed into a video
 with ffmpeg, e.g.:
@@ -35,6 +36,19 @@ Usage:
     python helpers/tts.py "这段话用克隆声音" -o voice.wav --provider mimo \
         --mimo-model voiceclone --reference-audio sample.mp3
 
+    # Fish Audio voice clone (creates a private reusable voice model first)
+    python helpers/tts.py "这段话用克隆声音" -o voice.mp3 --provider fish \
+        --reference-audio sample.wav --fish-voice-title "旁白声线"
+
+    # Reuse a previously created Fish Audio voice model
+    python helpers/tts.py "继续使用同一声线" -o voice.mp3 --provider fish \
+        --fish-voice-id <fish_voice_id>
+
+    # Fish Audio advanced generation controls (JSON object)
+    python helpers/tts.py "更稳定的旁白" -o voice.mp3 --provider fish \
+        --fish-voice-id <fish_voice_id> \
+        --extra_params '{"temperature": 0.5, "top_p": 0.7, "repetition_penalty": 1.2}'
+
     # Read text from a file
     python helpers/tts.py --text-file script.txt -o voice.wav --provider mimo
 """
@@ -62,6 +76,7 @@ import requests
 PROVIDER_ENV_KEYS = {
     "elevenlabs": "ELEVENLABS_API_KEY",
     "mimo": "MIMO_API_KEY",
+    "fish": "FISH_API_KEY",
 }
 
 
@@ -336,21 +351,146 @@ def concatenate_wav_chunks(chunks: list[bytes]) -> bytes:
 
 
 # ---------------------------------------------------------------------------
+# Fish Audio TTS and persistent voice cloning
+# ---------------------------------------------------------------------------
+
+FISH_CREATE_VOICE_URL = "https://api.fish.audio/model"
+FISH_TTS_URL = "https://api.fish.audio/v1/tts"
+FISH_DEFAULT_MODEL = "s2.1-pro-free"
+FISH_REFERENCE_SUFFIXES = {".wav", ".mp3", ".m4a", ".opus"}
+FISH_OUTPUT_FORMATS = {".mp3": "mp3", ".wav": "wav", ".pcm": "pcm", ".opus": "opus"}
+FISH_PROTECTED_EXTRA_PARAMS = {"text", "reference_id", "references", "format", "model"}
+
+
+def parse_fish_extra_params(raw_value: str | None) -> dict[str, object]:
+    """Parse Fish Audio advanced parameters from a JSON object.
+
+    Input: optional JSON from ``--extra_params``. Returns: a JSON-object
+    dictionary safe to merge into the Fish TTS payload. Raises ValueError for
+    malformed JSON, non-object JSON, or fields owned by the CLI.
+    """
+    if raw_value is None:
+        return {}
+    try:
+        params = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"--extra_params must be valid JSON: {exc.msg}") from exc
+    if not isinstance(params, dict):
+        raise ValueError("--extra_params must be a JSON object")
+    protected = sorted(FISH_PROTECTED_EXTRA_PARAMS.intersection(params))
+    if protected:
+        raise ValueError(
+            "--extra_params cannot override CLI-owned fields: " + ", ".join(protected)
+        )
+    return params
+
+
+def fish_output_format(output_path: Path) -> str:
+    """Map a Fish Audio output file suffix to its API format.
+
+    Input: requested output path. Returns: Fish Audio's matching format name.
+    Raises ValueError when the suffix cannot reliably describe the payload.
+    """
+    output_format = FISH_OUTPUT_FORMATS.get(output_path.suffix.lower())
+    if output_format is None:
+        supported = ", ".join(sorted(FISH_OUTPUT_FORMATS))
+        raise ValueError(f"Fish output must use one of: {supported}")
+    return output_format
+
+
+def create_fish_voice(
+    reference_audio: Path,
+    api_key: str,
+    title: str,
+    description: str | None = None,
+) -> str:
+    """Create a private Fish Audio voice from one sample and return its voice ID.
+
+    Inputs: an existing reference audio path, Fish API key, model title, and
+    optional description. Returns: the trained or newly-created voice ID.
+    """
+    if reference_audio.suffix.lower() not in FISH_REFERENCE_SUFFIXES:
+        supported = ", ".join(sorted(FISH_REFERENCE_SUFFIXES))
+        raise ValueError(f"Fish reference audio must be one of: {supported}")
+    with reference_audio.open("rb") as audio_file:
+        response = requests.post(
+            FISH_CREATE_VOICE_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            data={
+                "type": "tts",
+                "title": title,
+                "description": description or "Voice cloned for video narration",
+                "visibility": "private",
+                "train_mode": "fast",
+            },
+            files={"voices": (reference_audio.name, audio_file)},
+            timeout=600,
+        )
+    if response.status_code not in (200, 201):
+        raise RuntimeError(
+            f"Fish Audio voice clone returned {response.status_code}: {response.text[:500]}"
+        )
+    try:
+        voice_id = response.json().get("_id") or response.json().get("id")
+    except ValueError as exc:
+        raise RuntimeError("Fish Audio voice clone returned invalid JSON") from exc
+    if not voice_id:
+        raise RuntimeError(f"Fish Audio voice clone response has no voice ID: {response.text[:500]}")
+    return str(voice_id)
+
+
+def synthesize_fish(
+    text: str,
+    api_key: str,
+    reference_id: str,
+    model: str = FISH_DEFAULT_MODEL,
+    output_format: str = "mp3",
+    extra_params: dict[str, object] | None = None,
+) -> bytes:
+    """Synthesize text with a Fish Audio voice model and return MP3 audio bytes.
+
+    Inputs: synthesis text, Fish API key, reusable Fish voice ID, model name,
+    output format, and optional advanced API parameters. Returns: complete audio bytes.
+    """
+    payload: dict[str, object] = {
+        "text": text,
+        "reference_id": reference_id,
+        "format": output_format,
+    }
+    if extra_params:
+        payload.update(extra_params)
+    response = requests.post(
+        FISH_TTS_URL,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "model": model,
+        },
+        json=payload,
+        timeout=600,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"Fish Audio TTS returned {response.status_code}: {response.text[:500]}")
+    return response.content
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Generate voiceover audio from text (ElevenLabs / MiMo TTS)",
+        description="Generate voiceover audio from text (ElevenLabs / MiMo / Fish Audio TTS)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("text", nargs="?", help="Text to synthesize")
+    ap.add_argument("--text", dest="inline_text", help="Text to synthesize")
     ap.add_argument("--text-file", type=Path, help="Read text from a file (UTF-8)")
     ap.add_argument("-o", "--output", type=Path, required=True, help="Output audio path")
 
     ap.add_argument(
         "--provider",
-        choices=["elevenlabs", "mimo"],
+        choices=["elevenlabs", "mimo", "fish"],
         default="elevenlabs",
         help="TTS provider (default: elevenlabs)",
     )
@@ -423,10 +563,50 @@ def main() -> None:
         ),
     )
 
+    # ---- Fish Audio options ------------------------------------------------
+    ap.add_argument(
+        "--fish-voice-id",
+        default=None,
+        help="Existing Fish Audio voice model ID to reuse",
+    )
+    ap.add_argument(
+        "--fish-voice-title",
+        default="Video Use Voice Clone",
+        help="Title used only when creating a Fish Audio voice clone",
+    )
+    ap.add_argument(
+        "--fish-description",
+        default=None,
+        help="Optional description saved with a newly created Fish Audio voice clone",
+    )
+    ap.add_argument(
+        "--fish-model",
+        default=FISH_DEFAULT_MODEL,
+        help=f"Fish Audio synthesis model (default: {FISH_DEFAULT_MODEL})",
+    )
+    ap.add_argument(
+        "--extra_params",
+        "--extra-params",
+        dest="extra_params",
+        default=None,
+        help=(
+            "Fish Audio advanced TTS parameters as a JSON object, for example "
+            "'{\"temperature\":0.5,\"top_p\":0.7}'. Cannot override text, "
+            "reference_id, references, format, or model."
+        ),
+    )
+
     args = ap.parse_args()
 
+    if args.extra_params and args.provider != "fish":
+        ap.error("--extra_params is currently supported only with --provider fish")
+
     # Resolve text source
-    if args.text_file:
+    if args.inline_text and args.text_file:
+        ap.error("use either --text or --text-file, not both")
+    if args.inline_text:
+        text = args.inline_text.strip()
+    elif args.text_file:
         text = args.text_file.read_text(encoding="utf-8").strip()
     elif args.text:
         text = args.text
@@ -455,7 +635,7 @@ def main() -> None:
             similarity_boost=args.similarity_boost,
             style=args.el_style,
         )
-    else:  # mimo
+    elif args.provider == "mimo":
         api_key = load_api_key("mimo")
         model = MIMO_MODELS[args.mimo_model]
         if args.mimo_model == "voicedesign" and not style_instruction:
@@ -488,6 +668,38 @@ def main() -> None:
             for chunk in chunks
         ]
         audio = concatenate_wav_chunks(audio_chunks) if len(audio_chunks) > 1 else audio_chunks[0]
+    else:  # fish
+        api_key = load_api_key("fish")
+        if args.fish_voice_id and args.reference_audio:
+            ap.error("use either --fish-voice-id or --reference-audio with --provider fish, not both")
+        if not args.fish_voice_id and not args.reference_audio:
+            ap.error("Fish Audio requires --fish-voice-id or --reference-audio to clone a voice")
+        if args.reference_audio and not args.reference_audio.exists():
+            sys.exit(f"reference audio not found: {args.reference_audio}")
+        voice_id = args.fish_voice_id
+        if args.reference_audio:
+            print(f"[fish] creating private voice clone from {args.reference_audio.name}")
+            voice_id = create_fish_voice(
+                reference_audio=args.reference_audio,
+                api_key=api_key,
+                title=args.fish_voice_title,
+                description=args.fish_description,
+            )
+            print(f"[fish] created voice model: {voice_id}")
+        try:
+            extra_params = parse_fish_extra_params(args.extra_params)
+            output_format = fish_output_format(args.output)
+        except ValueError as exc:
+            ap.error(str(exc))
+        print(f"[fish:{args.fish_model}] synthesizing {len(text)} chars -> {args.output.name}")
+        audio = synthesize_fish(
+            text=text,
+            api_key=api_key,
+            reference_id=voice_id,
+            model=args.fish_model,
+            output_format=output_format,
+            extra_params=extra_params,
+        )
 
     args.output.write_bytes(audio)
     size_kb = args.output.stat().st_size / 1024

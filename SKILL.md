@@ -62,9 +62,10 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
 First-time install lives in `install.md` (clone, deps, ffmpeg, skill registration, API keys). Don't re-run it every session; on cold start just verify:
 
 - **Credential discovery (mandatory before asking the user):** the canonical key file is `<skill_root>/.env`, where `<skill_root>` is the parent directory of the actual helper after resolving its path — e.g. `Path(helpers/tts.py).resolve().parent.parent / ".env"`. Do **not** infer this from the current workspace, source-video directory, or a hard-coded `~/Developer/...` example. Then check `<cwd>/.env`, then exported environment variables. This is the exact lookup order used by `helpers/tts.py` and `helpers/transcribe.py`.
-- Run the check for **both** key names with the helpers' parsing semantics: strip whitespace around the key name and value, accept quoted values, and treat an empty value as missing. Do not use a strict `^KEY=` regex, because a valid `.env` may contain spaces around `=`. Never print a key or its prefix in tool output.
+- Run the check for the relevant key names (`ELEVENLABS_API_KEY`, `MIMO_API_KEY`, `FISH_API_KEY`) with the helpers' parsing semantics: strip whitespace around the key name and value, accept quoted values, and treat an empty value as missing. Do not use a strict `^KEY=` regex, because a valid `.env` may contain spaces around `=`. Never print a key or its prefix in tool output.
 - `ELEVENLABS_API_KEY` resolves from that lookup — required for Scribe transcription and ElevenLabs TTS. Ask the user only after the mandatory discovery check fails, then write a supplied key to `<skill_root>/.env` (never to the user's `<videos_dir>`).
 - `MIMO_API_KEY` resolves using the same lookup — required only for MiMo TTS voiceover. If MiMo is not used, leave it unset.
+- `FISH_API_KEY` resolves using the same lookup — required only for Fish Audio TTS / voice cloning. If Fish Audio is not used, leave it unset.
 - `ffmpeg` + `ffprobe` on PATH.
 - Python deps installed (`uv sync` or `pip install -e .` inside the repo).
 - Node.js + npm available if the session needs HyperFrames or Remotion slots. HyperFrames currently requires Node.js 22+.
@@ -82,7 +83,7 @@ Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this
 - **`pack_transcripts.py --edit-dir <dir>`** — `transcripts/*.json` → `takes_packed.md` (phrase-level, break on silence ≥ 0.5s).
 - **`timeline_view.py <video> <start> <end>`** — filmstrip + waveform PNG. On-demand visual drill-down. **Not a scan tool** — use it at decision points, not constantly.
 - **`render.py <edl.json> -o <out>`** — per-segment extract → concat → overlays (PTS-shifted) → subtitles LAST. `--preview` for 720p fast. `--build-subtitles` to generate master.srt inline.
-- **`tts.py <text> -o <out>`** — text-to-speech for adding voiceover/narration. `--provider elevenlabs|mimo` (default elevenlabs). MiMo modes: preset voices (`--voice 冰糖|茉莉|苏打|白桦|Mia|Chloe|Milo|Dean`), voice design (`--mimo-model voicedesign --style "..."`), voice clone (`--mimo-model voiceclone --reference-audio sample.mp3`). `--style` adds natural-language direction. Outputs wav/mp3 ready to mix with ffmpeg.
+- **`tts.py <text> -o <out>`** — text-to-speech for adding voiceover/narration. `--provider elevenlabs|mimo|fish` (default elevenlabs). MiMo supports preset voices, voice design, and short-sample cloning. Fish Audio creates a reusable private clone from `--reference-audio` or reuses `--fish-voice-id`. `--style` adds MiMo natural-language direction. Outputs wav/mp3 ready to mix with ffmpeg.
 - **`grade.py <in> -o <out>`** — ffmpeg filter chain grade. Presets + `--filter '<raw>'` for custom.
 - **`bilibili_src.py <cmd>`** — Bilibili stock-source helper (good for ACG/anime/game OST and short clips). `search "<kw>" --n 5` lists candidates (bvid/title/UP主/duration); `check-watermark <BVid>` heuristically detects a burned-in watermark by checking edge detail in all four corners against the center — **run it BEFORE using any Bilibili-sourced VIDEO as stock; a watermark hit means discard that clip** (videos from YouTube/other platforms are NOT subject to this check); `download <BVid> --audio-out/--video-out [--force] [--cookies-from-browser <browser>]` pulls audio (BGM, no watermark concern) or video via yt-dlp. Video formats need a logged-in cookie (see below). This check is heuristic; visually spot-check any borderline or business-critical result.
 - **Bilibili cookie acquisition:** pass `--cookies-from-browser <chrome|firefox|edge|safari|brave>`; yt-dlp reads the already-logged-in Bilibili cookie straight from the user's local browser (no manual export). Anonymous downloads are audio-only.
@@ -205,13 +206,25 @@ Invent a third style if neither fits. Hard rules: subtitles LAST (Rule 1), outpu
 
 ## Voiceover / TTS (when requested)
 
-When the user wants AI narration, dubbing, or a synthetic voice added to the edit, use `helpers/tts.py`. It supports two providers behind one CLI:
+When the user wants AI narration, dubbing, or a synthetic voice added to the edit, use `helpers/tts.py`. Select the provider from the user's prompt instead of defaulting blindly:
+
+- **They provide a clean reference recording and ask to preserve that exact voice, reuse it in later videos, localize it, or need higher clone fidelity:** choose **Fish Audio**. It creates a private reusable voice model from the sample; use the returned `--fish-voice-id` for later jobs.
+- **They ask for a quick Chinese-first clone from a short 3–10s clip, a named MiMo voice, or voice design from a text description:** choose **MiMo**.
+- **They ask for a specific existing ElevenLabs voice/library voice, or no clone is requested and broad multilingual library choice is the priority:** choose **ElevenLabs**.
+- If the prompt names a provider, follow it. If it only says “声音克隆” and provides a suitable reference, prefer Fish Audio; ask for the provider only when the choice materially affects cost, voice reuse, or consent.
+
+Before creating any clone, confirm the user has the right to use the reference speaker's voice. Never publish a cloned model: this helper always creates Fish Audio clones with `visibility=private`.
+
+It supports three providers behind one CLI:
 
 - **ElevenLabs** (`--provider elevenlabs`, default) — wide voice library via `--voice-id`, multilingual, MP3 output. Requires `ELEVENLABS_API_KEY`.
 - **MiMo** (`--provider mimo`) — Xiaomi MiMo-V2.5-TTS, Chinese-first, high-quality, currently free. Requires `MIMO_API_KEY`. Three modes:
   - **Preset voice** (`--mimo-model tts`, default): `--voice 冰糖` (Chinese female), `茉莉` (Chinese female), `苏打` (Chinese male), `白桦` (Chinese male), `Mia`/`Chloe` (English female), `Milo`/`Dean` (English male), or `mimo_default`.
   - **Voice design** (`--mimo-model voicedesign`): describe a voice in natural language via `--style`, e.g. `"一位温柔的中年女性，嗓音略带沙哑"`. No sample needed; `--style` is required.
   - **Voice clone** (`--mimo-model voiceclone`): pass a 3–10s `.mp3`/`.wav` sample via `--reference-audio sample.mp3` (≤10 MB); MiMo clones the timbre.
+- **Fish Audio** (`--provider fish`) — persistent private voice clone. Requires `FISH_API_KEY`. Supply `--reference-audio sample.wav` (accepts `.wav`, `.mp3`, `.m4a`, `.opus`; clean single-speaker audio of at least 10 seconds is recommended) to create a reusable voice model, or supply its `--fish-voice-id` to reuse one. Default synthesis model: `s2.1-pro-free` (override with `--fish-model`).
+
+**Fish Audio advanced controls:** use `--extra_params '<JSON object>'` only when the prompt asks for a deliberate output adjustment. The helper forwards supported TTS fields such as `temperature`, `top_p`, `repetition_penalty`, `max_new_tokens`, `chunk_length`, `latency`, `normalize`, `min_chunk_length`, `condition_on_previous_chunks`, `early_stop_threshold`, and `prosody` (with `speed` / `volume`). Example: `--extra_params '{"temperature":0.5,"top_p":0.7,"prosody":{"speed":1.1}}'`. `top_k` is also passed through for API compatibility, but it is not listed in Fish Audio’s current public TTS field reference. The CLI rejects attempts to override `text`, `reference_id`, `references`, `format`, or `model`.
 
 **Style control (MiMo):** `--style` takes a natural-language direction placed in the API's `user` message — e.g. `"用兴奋上扬的语调，语速稍快"` or the full director-mode format (角色/场景/指导). You can also embed audio tags directly in the synthesis text, e.g. `"(慵懒)再让我睡五分钟……"` or `"(东北话)哎呀妈呀，这天儿忒冷了！"`.
 
@@ -221,6 +234,18 @@ When the user wants AI narration, dubbing, or a synthetic voice added to the edi
    ```bash
    python helpers/tts.py "欢迎来到本期视频" -o edit/voiceover/narration.wav \
      --provider mimo --voice 冰糖 --style "用轻快活泼的语调"
+   ```
+   Fish Audio clone example:
+   ```bash
+   python helpers/tts.py "欢迎来到本期视频" -o edit/voiceover/narration.mp3 \
+     --provider fish --reference-audio speaker.wav --fish-voice-title "品牌旁白"
+   # Save the printed voice ID, then reuse it without uploading the sample again:
+   python helpers/tts.py "下一段旁白" -o edit/voiceover/next.mp3 \
+     --provider fish --fish-voice-id <voice_id>
+   # Reduce variation and slightly speed up delivery.
+   python helpers/tts.py "更稳定的旁白" -o edit/voiceover/tuned.mp3 \
+     --provider fish --fish-voice-id <voice_id> \
+     --extra_params '{"temperature":0.5,"top_p":0.7,"prosody":{"speed":1.1}}'
    ```
 2. Measure its duration with `ffprobe` if animations need to sync to it.
 3. Mix it into the rendered video with ffmpeg — duck the original audio under the voiceover, or replace it entirely:
