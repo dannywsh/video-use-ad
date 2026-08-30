@@ -164,7 +164,7 @@ MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，�
 - **画面**：1920×1080，高斯模糊背景填充
 - **BGM**：必须从 YouTube 或 Bilibili 找相关动漫/游戏 OST，禁止自行生成
 - **混音**：人声 -13 LUFS，BGM 低于人声 20dB（约 -27 LUFS）且恒定不闪避，BGM 仅开头 0.5s 淡入、结尾 1.1s 淡出，人声 0.05s 淡入，限幅防削波
-- **字幕**：中文单行字幕（Hiragino Sans GB W6，1080p 基准字号 96 / 字距 4 / 四周 3px 描边，无投影，每条最多 14 字），由 `helpers/ad_subtitles.py` 按成片分辨率设置 `PlayResX/Y` 后烧录，禁止自动换行
+- **字幕**：中文单行字幕（Hiragino Sans GB W6，1080p 基准字号 72 / 字距 1 / 四周 3px 描边，无投影，每条最多 24 字），由 `helpers/ad_subtitles.py` 按成片分辨率设置 `PlayResX/Y` 后烧录，禁止自动换行
 - **配音**：mimo-v2.5-tts-voiceclone 声音克隆，普通话
 
 完整规格见 [`skills/video-use-ad/SKILL.md`](./skills/video-use-ad/SKILL.md)。
