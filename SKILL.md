@@ -32,6 +32,7 @@ These are the things where deviation produces silent failures or broken output. 
 11. **Strategy confirmation before execution.** Never touch the cut until the user has approved the plain-English plan.
 12. **All session outputs in `<videos_dir>/edit/`.** Never write inside the `video-use/` project directory.
 13. **TTS narration subtitles are verbatim and final-audio aligned.** Generate captions only after the final TTS audio exists. Every spoken word, including brand names, qualifiers, and fillers the user expects, must appear in the subtitles in the same order; split only at natural semantic boundaries and never summarize, paraphrase, or omit text. Derive timestamps from word-level transcription or forced alignment of that exact final audio, then convert them to output-timeline offsets. Never hand-estimate subtitle timings from the script or total runtime.
+14. **Inserted third-party footage must carry the intended meaning on screen.** For a game, film, animation, or product promo, every inserted clip must visibly show the relevant character, world, gameplay, product use, or other claim-supporting subject during its usable duration. Do not use platform logos, publisher cards, rating screens, preorder/date cards, title-only frames, black frames, or generic footage as a substitute. Sample the planned in/out frames before editing; discard or trim any clip whose visible content does not directly support the adjacent narration, caption, or product claim.
 
 Everything else in this document is a worked example. Deviate whenever the material calls for it.
 
@@ -105,6 +106,8 @@ For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a su
    - Overlay misaligned or showing wrong frames (Rule 4 violation)
 
    Also sample: first 2s, last 2s, and 2–3 mid-points — check grade consistency, subtitle readability, overall coherence. Run `ffprobe` on the output to verify duration matches the EDL expectation.
+
+   For every externally inserted game, film, animation, or stock clip, inspect a frame near its start, midpoint, and end. Verify that the intended relevant subject is actually visible and that no logo/card/preorder/title-only frame remains. Treat a failed relevance check as a blocking defect: replace or trim the clip, then re-render.
 
    If anything fails: fix → re-render → re-eval. **Cap at 3 self-eval passes** — if issues remain after 3, flag them to the user rather than looping forever. Only present the preview once the self-eval passes.
 8. **Iterate + persist.** Natural-language feedback, re-plan, re-render. Never re-transcribe. Final render on confirmation. Append to `project.md`.
