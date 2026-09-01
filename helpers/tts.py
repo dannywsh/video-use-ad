@@ -16,9 +16,13 @@ with ffmpeg, e.g.:
       -map 0:v -map "[a]" -c:v copy -c:a aac -shortest out.mp4
 
 Usage:
-    # ElevenLabs (default)
-    python helpers/tts.py "Hello world" -o voice.mp3
-    python helpers/tts.py "Hello" -o voice.mp3 --voice-id <elevenlabs_voice_id>
+    # Fish Audio (default) — needs --fish-voice-id or --reference-audio
+    python helpers/tts.py "这段话用克隆声音" -o voice.mp3 --reference-audio sample.wav
+    python helpers/tts.py "继续使用同一声线" -o voice.mp3 --fish-voice-id <fish_voice_id>
+
+    # ElevenLabs
+    python helpers/tts.py "Hello world" -o voice.mp3 --provider elevenlabs
+    python helpers/tts.py "Hello" -o voice.mp3 --provider elevenlabs --voice-id <elevenlabs_voice_id>
 
     # MiMo preset voice
     python helpers/tts.py "你好世界" -o voice.wav --provider mimo --voice 冰糖
@@ -36,17 +40,8 @@ Usage:
     python helpers/tts.py "这段话用克隆声音" -o voice.wav --provider mimo \
         --mimo-model voiceclone --reference-audio sample.mp3
 
-    # Fish Audio voice clone (creates a private reusable voice model first)
-    python helpers/tts.py "这段话用克隆声音" -o voice.mp3 --provider fish \
-        --reference-audio sample.wav --fish-voice-title "旁白声线"
-
-    # Reuse a previously created Fish Audio voice model
-    python helpers/tts.py "继续使用同一声线" -o voice.mp3 --provider fish \
-        --fish-voice-id <fish_voice_id>
-
     # Fish Audio advanced generation controls (JSON object)
-    python helpers/tts.py "更稳定的旁白" -o voice.mp3 --provider fish \
-        --fish-voice-id <fish_voice_id> \
+    python helpers/tts.py "更稳定的旁白" -o voice.mp3 --fish-voice-id <fish_voice_id> \
         --extra_params '{"temperature": 0.5, "top_p": 0.7, "repetition_penalty": 1.2}'
 
     # Read text from a file
@@ -491,8 +486,8 @@ def main() -> None:
     ap.add_argument(
         "--provider",
         choices=["elevenlabs", "mimo", "fish"],
-        default="elevenlabs",
-        help="TTS provider (default: elevenlabs)",
+        default="fish",
+        help="TTS provider (default: fish)",
     )
 
     # ---- ElevenLabs options ------------------------------------------------

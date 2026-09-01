@@ -15,7 +15,7 @@ Three things must exist on this machine:
 
 1. The `video-use` repo cloned somewhere stable.
 2. `ffmpeg` on `$PATH` (plus optional `yt-dlp` for online sources).
-3. An ElevenLabs API key in `.env` at the repo root (for Scribe transcription). Optionally add MiMo and Fish Audio API keys in the same `.env` for TTS voiceover.
+3. Transcription credentials in `.env` at the repo root: `ELEVENLABS_API_KEY` for Scribe (default ASR), and/or `PARAFORMER_API_TOKEN` for Chinese Paraformer ASR. For default TTS voiceover add `FISH_API_KEY`. MiMo is optional and only if the user asks for it.
 
 And one thing must be true about the current agent:
 
@@ -23,7 +23,7 @@ And one thing must be true about the current agent:
 
 ## Install prompt contract
 
-- Do everything yourself. Only ask the user for things you cannot generate — the ElevenLabs API key, MiMo/Fish Audio API keys (if they want those voiceover providers), and confirmation before `brew install`.
+- Do everything yourself. Only ask the user for things you cannot generate — the ElevenLabs API key and/or Paraformer token, the Fish Audio API key (default TTS), a MiMo key only if they ask for MiMo, and confirmation before `brew install`.
 - Prefer a stable clone path like `~/Developer/video-use` (not `/tmp`, not `~/Downloads`).
 - The skill references helpers by bare name (`transcribe.py`, `render.py`). That works because SKILL.md and `helpers/` ship together — keep them as siblings when you register the skill.
 - After install, verify by running one real command against one real file. Don't declare success on file-existence checks alone.
@@ -91,9 +91,9 @@ If you can't tell which agent you're in, ask the user once: "which agent am I ru
 
 ### 5. API keys
 
-Scribe (ElevenLabs) does all transcription. Without an ElevenLabs key, nothing transcribes. MiMo TTS is optional and only needed for AI voiceover via `helpers/tts.py`.
+Transcription has two providers. Scribe (ElevenLabs) is the default and is required for speaker diarization and audio-event tagging. Paraformer is optional and is the Chinese-first choice for TTS subtitle timing. Default TTS voiceover is Fish Audio via `helpers/tts.py`. MiMo is opt-in only.
 
-#### ElevenLabs (required for transcription)
+#### ElevenLabs (default ASR + ElevenLabs TTS)
 
 1. Check existing state in this order and stop at the first hit:
 
@@ -129,24 +129,43 @@ Scribe (ElevenLabs) does all transcription. Without an ElevenLabs key, nothing t
 
     `200` means the key works. `401` means the user pasted a wrong/expired key — ask once more and stop. Anything else (network, 5xx), move on and verify during first real transcription.
 
-#### MiMo (optional — for TTS voiceover only)
+If the user only needs Chinese TTS subtitle timing and already has a Paraformer token, Scribe can be skipped for now.
 
-The `tts.py` helper supports Xiaomi MiMo-V2.5-TTS for AI voiceover (preset voices, voice design, voice cloning). It is currently free and Chinese-first. If the user wants voiceover, ask whether they want to use MiMo:
+#### Paraformer (optional — Chinese ASR)
 
-> Want to enable MiMo TTS for AI voiceover? It's currently free — grab an API key at https://mimo.mi.com and paste it here. Or say "skip" to stick with ElevenLabs for voiceover.
+Hosted FunASR Paraformer-large. Default URL is `https://paraformer.ow2shit.top`. Health check is public; transcription requires a Bearer token.
 
-If they provide a key, append it to the same `.env`:
+1. Check existing state:
 
-```bash
-grep -q '^MIMO_API_KEY=' ~/Developer/video-use/.env \
-  || printf 'MIMO_API_KEY=%s\n' "$MIMO_KEY" >> ~/Developer/video-use/.env
-```
+    ```bash
+    [ -n "$PARAFORMER_API_TOKEN" ] && echo "env"
+    grep -q '^PARAFORMER_API_TOKEN=..' ~/Developer/video-use/.env 2>/dev/null && echo "dotenv"
+    ```
 
-If the user doesn't plan to use MiMo TTS, skip this — ElevenLabs TTS also works for voiceover, and transcription is unaffected.
+2. If neither is set and the user wants this provider, ask once for the token and append it (do not clobber other keys). Optional URL override:
 
-#### Fish Audio (optional — persistent private voice cloning)
+    ```bash
+    touch ~/Developer/video-use/.env
+    grep -q '^PARAFORMER_API_TOKEN=' ~/Developer/video-use/.env \
+      || printf 'PARAFORMER_API_TOKEN=%s\n' "$PARAFORMER_TOKEN" >> ~/Developer/video-use/.env
+    grep -q '^PARAFORMER_API_URL=' ~/Developer/video-use/.env \
+      || printf 'PARAFORMER_API_URL=%s\n' 'https://paraformer.ow2shit.top' >> ~/Developer/video-use/.env
+    chmod 600 ~/Developer/video-use/.env
+    ```
 
-Use Fish Audio when the user wants a reusable clone of an authorized speaker's voice. Ask for the key only after confirming they have the right to clone the supplied voice. Add it to the same repo-root `.env` without replacing other keys:
+    Never echo the token back in tool output. Never commit `.env`.
+
+3. Sanity check:
+
+    ```bash
+    curl -s -o /dev/null -w '%{http_code}\n' https://paraformer.ow2shit.top/health
+    ```
+
+    `200` means the host is up. Verify the token on the first real `--provider paraformer` transcription.
+
+#### Fish Audio (default TTS — persistent private voice cloning)
+
+Default voiceover provider. Ask for the key when the user wants AI narration, after confirming they have the right to clone any supplied voice. Add it to the same repo-root `.env` without replacing other keys:
 
 ```bash
 grep -q '^FISH_API_KEY=' ~/Developer/video-use/.env \
@@ -155,6 +174,15 @@ chmod 600 ~/Developer/video-use/.env
 ```
 
 `helpers/tts.py --provider fish --reference-audio sample.wav ...` creates a private model and prints its reusable voice ID. Fish Audio accepts `.wav`, `.mp3`, `.m4a`, and `.opus`; clean, single-speaker clips of at least 10 seconds are recommended. Do not print or commit the key.
+
+#### MiMo (opt-in only)
+
+Ask for `MIMO_API_KEY` only if the user explicitly wants MiMo. Do not offer it as the default voiceover provider.
+
+```bash
+grep -q '^MIMO_API_KEY=' ~/Developer/video-use/.env \
+  || printf 'MIMO_API_KEY=%s\n' "$MIMO_KEY" >> ~/Developer/video-use/.env
+```
 
 ### 6. Verify end-to-end
 

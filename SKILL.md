@@ -24,8 +24,8 @@ These are the things where deviation produces silent failures or broken output. 
 3. **30ms audio fades at every segment boundary** (`afade=t=in:st=0:d=0.03,afade=t=out:st={dur-0.03}:d=0.03`). Otherwise audible pops at every cut.
 4. **Overlays use `setpts=PTS-STARTPTS+T/TB`** to shift the overlay's frame 0 to its window start. Otherwise you see the middle of the animation during the overlay window.
 5. **Master SRT uses output-timeline offsets**: `output_time = word.start - segment_start + segment_offset`. Otherwise captions misalign after segment concat.
-6. **Never cut inside a word.** Snap every cut edge to a word boundary from the Scribe transcript.
-7. **Pad every cut edge.** Working window: 30–200ms. Scribe timestamps drift 50–100ms — padding absorbs the drift. Tighter for fast-paced, looser for cinematic.
+6. **Never cut inside a word.** Snap every cut edge to a word boundary from the word-level transcript.
+7. **Pad every cut edge.** Working window: 30–200ms. ASR timestamps drift 50–100ms — padding absorbs the drift. Tighter for fast-paced, looser for cinematic.
 8. **Word-level verbatim ASR only.** Never SRT/phrase mode (loses sub-second gap data). Never normalized fillers (loses editorial signal).
 9. **Cache transcripts per source.** Never re-transcribe unless the source file itself changed.
 10. **Parallel sub-agents for multiple animations.** Never sequential. Spawn N at once via the `Agent` tool; total wall time ≈ slowest one.
@@ -47,7 +47,7 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
     ├── project.md               ← memory; appended every session
     ├── takes_packed.md          ← phrase-level transcripts, the LLM's primary reading view
     ├── edl.json                 ← cut decisions
-    ├── transcripts/<name>.json  ← cached raw Scribe JSON
+    ├── transcripts/<name>.json  ← cached raw word-level ASR JSON
     ├── animations/slot_<id>/    ← per-animation source + render + reasoning
     ├── clips_graded/            ← per-segment extracts with grade + fades
     ├── voiceover/               ← TTS audio (tts.py output)
@@ -63,31 +63,42 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
 First-time install lives in `install.md` (clone, deps, ffmpeg, skill registration, API keys). Don't re-run it every session; on cold start just verify:
 
 - **Credential discovery (mandatory before asking the user):** the canonical key file is `<skill_root>/.env`, where `<skill_root>` is the parent directory of the actual helper after resolving its path — e.g. `Path(helpers/tts.py).resolve().parent.parent / ".env"`. Do **not** infer this from the current workspace, source-video directory, or a hard-coded `~/Developer/...` example. Then check `<cwd>/.env`, then exported environment variables. This is the exact lookup order used by `helpers/tts.py` and `helpers/transcribe.py`.
-- Run the check for the relevant key names (`ELEVENLABS_API_KEY`, `MIMO_API_KEY`, `FISH_API_KEY`) with the helpers' parsing semantics: strip whitespace around the key name and value, accept quoted values, and treat an empty value as missing. Do not use a strict `^KEY=` regex, because a valid `.env` may contain spaces around `=`. Never print a key or its prefix in tool output.
-- `ELEVENLABS_API_KEY` resolves from that lookup — required for Scribe transcription and ElevenLabs TTS. Ask the user only after the mandatory discovery check fails, then write a supplied key to `<skill_root>/.env` (never to the user's `<videos_dir>`).
-- `MIMO_API_KEY` resolves using the same lookup — required only for MiMo TTS voiceover. If MiMo is not used, leave it unset.
-- `FISH_API_KEY` resolves using the same lookup — required only for Fish Audio TTS / voice cloning. If Fish Audio is not used, leave it unset.
+- Run the check for the relevant key names (`ELEVENLABS_API_KEY`, `MIMO_API_KEY`, `FISH_API_KEY`, `PARAFORMER_API_TOKEN`) with the helpers' parsing semantics: strip whitespace around the key name and value, accept quoted values, and treat an empty value as missing. Do not use a strict `^KEY=` regex, because a valid `.env` may contain spaces around `=`. Never print a key or its prefix in tool output.
+- `ELEVENLABS_API_KEY` resolves from that lookup — required for Scribe transcription (the default ASR) and ElevenLabs TTS. Ask the user only after the mandatory discovery check fails, then write a supplied key to `<skill_root>/.env` (never to the user's `<videos_dir>`).
+- `PARAFORMER_API_TOKEN` resolves using the same lookup — required only for `--provider paraformer`. Optional `PARAFORMER_API_URL` overrides the default `https://paraformer.ow2shit.top`. Ask the user only after the discovery check fails.
+- `FISH_API_KEY` resolves using the same lookup — required for the default Fish Audio TTS / voice cloning. Ask the user only after the discovery check fails.
+- `MIMO_API_KEY` resolves using the same lookup — required only when the user explicitly asks for MiMo TTS. If MiMo is not used, leave it unset.
 - `ffmpeg` + `ffprobe` on PATH.
 - Python deps installed (`uv sync` or `pip install -e .` inside the repo).
 - Node.js + npm available if the session needs HyperFrames or Remotion slots. HyperFrames currently requires Node.js 22+.
 - `yt-dlp`, HyperFrames, Remotion, Manim installed only on first use.
 - First-use animation setup happens inside the slot directory, never at the video-use repo root. HyperFrames can be invoked with `npx --yes hyperframes ...`; Remotion can be scaffolded with `npx create-video@latest` or installed as a project-local dependency before using its `remotion render` command.
 - This skill vendors `skills/manim-video/`. Read its SKILL.md when building a Manim slot.
-- This skill vendors `skills/video-use-ad/`. Read its SKILL.md when the task is an ACG-style product promo video (ACG 风格商品宣传广告视频) — it is a fixed production recipe (image/video selection, script style, 1920×1080 blur backdrop, LUFS mixing, single-line subtitles, MiMo voice clone) layered on top of the main skill's helpers.
+- This skill vendors `skills/video-use-ad/`. Read its SKILL.md when the task is an ACG-style product promo video (ACG 风格商品宣传广告视频) — it is a fixed production recipe (image/video selection, script style, 1920×1080 blur backdrop, LUFS mixing, single-line subtitles, Fish Audio voice clone) layered on top of the main skill's helpers.
 
 Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this SKILL.md. Resolve their paths relative to the directory containing this file — the skill is typically symlinked at `~/.claude/skills/video-use/` or `~/.codex/skills/video-use/`.
 
 ## Helpers
 
-- **`transcribe.py <video>`** — single-file Scribe call. `--num-speakers N` optional. Cached.
-- **`transcribe_batch.py <videos_dir>`** — 4-worker parallel transcription. Use for multi-take.
+- **`transcribe.py <video>`** — single-file ASR. `--provider elevenlabs|paraformer` (default elevenlabs). `--num-speakers N` is Scribe-only. Cached. Writes Scribe-compatible `words` JSON for either provider.
+- **`transcribe_batch.py <videos_dir>`** — 4-worker parallel transcription. Same `--provider` flag. Use for multi-take.
 - **`pack_transcripts.py --edit-dir <dir>`** — `transcripts/*.json` → `takes_packed.md` (phrase-level, break on silence ≥ 0.5s).
 - **`timeline_view.py <video> <start> <end>`** — filmstrip + waveform PNG. On-demand visual drill-down. **Not a scan tool** — use it at decision points, not constantly.
 - **`render.py <edl.json> -o <out>`** — per-segment extract → concat → overlays (PTS-shifted) → subtitles LAST. `--preview` for 720p fast. `--build-subtitles` to generate master.srt inline.
-- **`tts.py <text> -o <out>`** — text-to-speech for adding voiceover/narration. `--provider elevenlabs|mimo|fish` (default elevenlabs). MiMo supports preset voices, voice design, and short-sample cloning. Fish Audio creates a reusable private clone from `--reference-audio` or reuses `--fish-voice-id`. `--style` adds MiMo natural-language direction. Outputs wav/mp3 ready to mix with ffmpeg.
+- **`tts.py <text> -o <out>`** — text-to-speech for adding voiceover/narration. `--provider fish|mimo|elevenlabs` (default **fish**). Fish Audio creates a reusable private clone from `--reference-audio` or reuses `--fish-voice-id`. MiMo is opt-in for preset voices, voice design, or short-sample cloning. `--style` is MiMo-only. Outputs wav/mp3 ready to mix with ffmpeg.
 - **`grade.py <in> -o <out>`** — ffmpeg filter chain grade. Presets + `--filter '<raw>'` for custom.
 - **`bilibili_src.py <cmd>`** — Bilibili stock-source helper (good for ACG/anime/game OST and short clips). `search "<kw>" --n 5` lists candidates (bvid/title/UP主/duration); `check-watermark <BVid>` heuristically detects a burned-in watermark by checking edge detail in all four corners against the center — **run it BEFORE using any Bilibili-sourced VIDEO as stock; a watermark hit means discard that clip** (videos from YouTube/other platforms are NOT subject to this check); `download <BVid> --audio-out/--video-out [--force] [--cookies-from-browser <browser>]` pulls audio (BGM, no watermark concern) or video via yt-dlp. Video formats need a logged-in cookie (see below). This check is heuristic; visually spot-check any borderline or business-critical result.
 - **Bilibili cookie acquisition:** pass `--cookies-from-browser <chrome|firefox|edge|safari|brave>`; yt-dlp reads the already-logged-in Bilibili cookie straight from the user's local browser (no manual export). Anonymous downloads are audio-only.
+
+**ASR provider choice** (do not default blindly):
+
+- **ElevenLabs Scribe** (`--provider elevenlabs`, default) — word-level timestamps, speaker diarization, filler/audio-event tags. Use for multi-take talking-head inventory, interviews, and any cut that needs speaker changes or `(laughs)` / `(sighs)`. Requires `ELEVENLABS_API_KEY`.
+- **Paraformer** (`--provider paraformer`) — hosted FunASR Paraformer-large at `https://paraformer.ow2shit.top`. Chinese-first character timestamps, no diarization, no audio events. Use for Chinese TTS/voiceover subtitle timing, and for Chinese-only sources when speaker IDs and audio events are not needed. Requires `PARAFORMER_API_TOKEN`. Never pass `response_format=srt` into the edit pipeline — the helper converts JSON to word-level `words` entries.
+
+```bash
+python helpers/transcribe.py edit/voiceover/narration.wav --edit-dir edit --provider paraformer
+python helpers/transcribe_batch.py <videos_dir> --provider paraformer
+```
 
 For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a sub-agent via the `Agent` tool.
 
@@ -209,23 +220,23 @@ Invent a third style if neither fits. Hard rules: subtitles LAST (Rule 1), outpu
 
 ## Voiceover / TTS (when requested)
 
-When the user wants AI narration, dubbing, or a synthetic voice added to the edit, use `helpers/tts.py`. Select the provider from the user's prompt instead of defaulting blindly:
+When the user wants AI narration, dubbing, or a synthetic voice added to the edit, use `helpers/tts.py`. **Default to Fish Audio** (`--provider fish`). Do not use MiMo unless the user names it.
 
-- **They provide a clean reference recording and ask to preserve that exact voice, reuse it in later videos, localize it, or need higher clone fidelity:** choose **Fish Audio**. It creates a private reusable voice model from the sample; use the returned `--fish-voice-id` for later jobs.
-- **They ask for a quick Chinese-first clone from a short 3–10s clip, a named MiMo voice, or voice design from a text description:** choose **MiMo**.
-- **They ask for a specific existing ElevenLabs voice/library voice, or no clone is requested and broad multilingual library choice is the priority:** choose **ElevenLabs**.
-- If the prompt names a provider, follow it. If it only says “声音克隆” and provides a suitable reference, prefer Fish Audio; ask for the provider only when the choice materially affects cost, voice reuse, or consent.
+- **Default / 声音克隆 / 参考音频 / 要复用声线:** **Fish Audio**. Create a private reusable voice from `--reference-audio`, then reuse `--fish-voice-id`. Requires `FISH_API_KEY` and either a reference clip (≥10s recommended) or an existing voice ID.
+- **They explicitly ask for MiMo**, a named MiMo preset (`冰糖` etc.), MiMo voice design, or a 3–10s MiMo clone: choose **MiMo**.
+- **They explicitly ask for ElevenLabs** or a specific ElevenLabs library voice: choose **ElevenLabs**.
+- If the prompt names a provider, follow it. Never fall back to MiMo just because the clip is Chinese or short.
 
 Before creating any clone, confirm the user has the right to use the reference speaker's voice. Never publish a cloned model: this helper always creates Fish Audio clones with `visibility=private`.
 
 It supports three providers behind one CLI:
 
-- **ElevenLabs** (`--provider elevenlabs`, default) — wide voice library via `--voice-id`, multilingual, MP3 output. Requires `ELEVENLABS_API_KEY`.
-- **MiMo** (`--provider mimo`) — Xiaomi MiMo-V2.5-TTS, Chinese-first, high-quality, currently free. Requires `MIMO_API_KEY`. Three modes:
+- **Fish Audio** (`--provider fish`, default) — persistent private voice clone. Requires `FISH_API_KEY`. Supply `--reference-audio sample.wav` (accepts `.wav`, `.mp3`, `.m4a`, `.opus`; clean single-speaker audio of at least 10 seconds is recommended) to create a reusable voice model, or supply its `--fish-voice-id` to reuse one. Default synthesis model: `s2.1-pro-free` (override with `--fish-model`).
+- **ElevenLabs** (`--provider elevenlabs`) — wide voice library via `--voice-id`, multilingual, MP3 output. Requires `ELEVENLABS_API_KEY`.
+- **MiMo** (`--provider mimo`) — Xiaomi MiMo-V2.5-TTS, Chinese-first, currently free. Opt-in only. Requires `MIMO_API_KEY`. Three modes:
   - **Preset voice** (`--mimo-model tts`, default): `--voice 冰糖` (Chinese female), `茉莉` (Chinese female), `苏打` (Chinese male), `白桦` (Chinese male), `Mia`/`Chloe` (English female), `Milo`/`Dean` (English male), or `mimo_default`.
   - **Voice design** (`--mimo-model voicedesign`): describe a voice in natural language via `--style`, e.g. `"一位温柔的中年女性，嗓音略带沙哑"`. No sample needed; `--style` is required.
   - **Voice clone** (`--mimo-model voiceclone`): pass a 3–10s `.mp3`/`.wav` sample via `--reference-audio sample.mp3` (≤10 MB); MiMo clones the timbre.
-- **Fish Audio** (`--provider fish`) — persistent private voice clone. Requires `FISH_API_KEY`. Supply `--reference-audio sample.wav` (accepts `.wav`, `.mp3`, `.m4a`, `.opus`; clean single-speaker audio of at least 10 seconds is recommended) to create a reusable voice model, or supply its `--fish-voice-id` to reuse one. Default synthesis model: `s2.1-pro-free` (override with `--fish-model`).
 
 **Fish Audio advanced controls:** use `--extra_params '<JSON object>'` only when the prompt asks for a deliberate output adjustment. The helper forwards supported TTS fields such as `temperature`, `top_p`, `repetition_penalty`, `max_new_tokens`, `chunk_length`, `latency`, `normalize`, `min_chunk_length`, `condition_on_previous_chunks`, `early_stop_threshold`, and `prosody` (with `speed` / `volume`). Example: `--extra_params '{"temperature":0.5,"top_p":0.7,"prosody":{"speed":1.1}}'`. `top_k` is also passed through for API compatibility, but it is not listed in Fish Audio’s current public TTS field reference. The CLI rejects attempts to override `text`, `reference_id`, `references`, `format`, or `model`.
 
@@ -234,11 +245,6 @@ It supports three providers behind one CLI:
 **Typical workflow:**
 
 1. Generate the voiceover file into `<edit>/voiceover/`:
-   ```bash
-   python helpers/tts.py "欢迎来到本期视频" -o edit/voiceover/narration.wav \
-     --provider mimo --voice 冰糖 --style "用轻快活泼的语调"
-   ```
-   Fish Audio clone example:
    ```bash
    python helpers/tts.py "欢迎来到本期视频" -o edit/voiceover/narration.mp3 \
      --provider fish --reference-audio speaker.wav --fish-voice-title "品牌旁白"
@@ -254,13 +260,13 @@ It supports three providers behind one CLI:
 3. Mix it into the rendered video with ffmpeg — duck the original audio under the voiceover, or replace it entirely:
    ```bash
    # Mix voiceover over original audio (original ducked to 30%)
-   ffmpeg -i final.mp4 -i edit/voiceover/narration.wav -filter_complex \
+   ffmpeg -i final.mp4 -i edit/voiceover/narration.mp3 -filter_complex \
      "[0:a]volume=0.3[bg];[bg][1:a]amix=inputs=2:duration=longest:dropout_transition=2[a]" \
      -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 192k -shortest final_voiced.mp4
    ```
    If the voiceover should start at a specific offset, use `adelay` on the voiceover track before mixing.
 4. If the voiceover drives animation timing, generate it **before** building overlays so you can sync reveals to it (see the animation payoff-timing rule).
-5. If subtitles are required, transcribe or force-align the **generated final voiceover file** at word level before creating `master.srt`. Use the narration source text only to verify the alignment; do not write a shortened caption version. Compare the rendered SRT text against the narration text before delivery and treat any missing, reordered, or paraphrased spoken content as a blocking defect.
+5. If subtitles are required, transcribe or force-align the **generated final voiceover file** at word level before creating `master.srt`. For Chinese narration, prefer `--provider paraformer`; use Scribe when diarization or non-Chinese timing is required. Use the narration source text only to verify the alignment; do not write a shortened caption version. Compare the rendered SRT text against the narration text before delivery and treat any missing, reordered, or paraphrased spoken content as a blocking defect.
 
 Hard rules: never commit API keys; write them only to the repo-root `.env`. Generated voiceover files go under `<videos_dir>/edit/voiceover/`, never inside the skill directory.
 
@@ -380,8 +386,8 @@ Things that consistently fail regardless of style:
 
 - **Hierarchical pre-computed codec formats** with USABILITY / tone tags / shot layers. Over-engineering. Derive from the transcript at decision time.
 - **Hand-tuned moment-scoring functions.** The LLM picks better than any heuristic you'll write.
-- **Whisper SRT / phrase-level output.** Loses sub-second gap data. Always word-level verbatim.
-- **Running Whisper locally on CPU.** Slow and it normalizes fillers. Use hosted Scribe.
+- **Whisper SRT / phrase-level output.** Loses sub-second gap data. Always word-level verbatim JSON (`words` with start/end), whether from Scribe or Paraformer.
+- **Running Whisper locally on CPU.** Slow and it normalizes fillers. Use Scribe or Paraformer.
 - **Burning subtitles into base before compositing overlays.** Overlays hide them. (Hard Rule 1.)
 - **Single-pass filtergraph when you have overlays.** Double re-encodes. Use per-segment extract → concat.
 - **Linear animation easing.** Looks robotic. Always cubic.

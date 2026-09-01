@@ -1,12 +1,13 @@
 """Batch-transcribe every video in a directory with 4 parallel workers.
 
-Walks <videos_dir> for common video extensions, runs ElevenLabs Scribe on
-each, writes transcripts to <videos_dir>/edit/transcripts/<name>.json.
+Walks <videos_dir> for common video extensions, runs the selected ASR
+provider on each, writes transcripts to <videos_dir>/edit/transcripts/<name>.json.
 
 Cached per-file: any source that already has a transcript is skipped.
 
 Usage:
     python helpers/transcribe_batch.py <videos_dir>
+    python helpers/transcribe_batch.py <videos_dir> --provider paraformer
     python helpers/transcribe_batch.py <videos_dir> --workers 4
     python helpers/transcribe_batch.py <videos_dir> --num-speakers 2
     python helpers/transcribe_batch.py <videos_dir> --edit-dir /custom/edit
@@ -20,7 +21,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from transcribe import load_api_key, transcribe_one
+from transcribe import PROVIDERS, transcribe_one
 
 
 VIDEO_EXTS = {".mp4", ".MP4", ".mov", ".MOV", ".mkv", ".MKV", ".avi", ".AVI", ".m4v"}
@@ -54,7 +55,13 @@ def main() -> None:
         "--num-speakers",
         type=int,
         default=None,
-        help="Optional number of speakers. Improves diarization when known.",
+        help="Optional number of speakers. Scribe only; ignored by paraformer.",
+    )
+    ap.add_argument(
+        "--provider",
+        choices=PROVIDERS,
+        default="elevenlabs",
+        help="ASR provider (default: elevenlabs)",
     )
     args = ap.parse_args()
 
@@ -77,9 +84,7 @@ def main() -> None:
         print("nothing to do")
         return
 
-    api_key = load_api_key()
-
-    print(f"transcribing {len(pending)} files with {args.workers} parallel workers")
+    print(f"transcribing {len(pending)} files with {args.workers} parallel workers via {args.provider}")
     t0 = time.time()
 
     errors: list[tuple[Path, str]] = []
@@ -89,10 +94,10 @@ def main() -> None:
                 transcribe_one,
                 video=v,
                 edit_dir=edit_dir,
-                api_key=api_key,
                 language=args.language,
                 num_speakers=args.num_speakers,
                 verbose=False,
+                provider=args.provider,
             ): v
             for v in pending
         }

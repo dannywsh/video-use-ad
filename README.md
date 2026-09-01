@@ -26,14 +26,15 @@
 ```text
 Set up https://github.com/dannywsh/video-use-ad for me.
 
-Read install.md first to install this repo, wire up ffmpeg, register the skill with whichever agent you're running under, and set up the ElevenLabs API key — ask me to paste it when you need it. Optionally set up the MiMo API key if I want AI voiceover. Then read SKILL.md for daily usage, and always read helpers/ because that's where the editing scripts live. After install, don't transcribe anything on your own — just tell me it's ready and wait for me to drop footage into a folder.
+Read install.md first to install this repo, wire up ffmpeg, register the skill with whichever agent you're running under, and set up transcription credentials — ElevenLabs Scribe by default, or Paraformer for Chinese ASR. For AI voiceover, set up the Fish Audio API key (default TTS). Then read SKILL.md for daily usage, and always read helpers/ because that's where the editing scripts live. After install, don't transcribe anything on your own — just tell me it's ready and wait for me to drop footage into a folder.
 ```
 
 助手会自动完成克隆、依赖安装、技能注册，并在需要时向你询问 API Key：
 
-- **ElevenLabs API Key**（必需）— 用于语音转文字（Scribe 转录），在 [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys) 获取
-- **MiMo API Key**（可选）— 用于 AI 配音，在 [mimo.mi.com](https://mimo.mi.com) 获取，目前免费
-- **Fish Audio API Key**（可选）— 用于高保真、可复用的声音克隆，在 [Fish Audio](https://fish.audio) 获取
+- **ElevenLabs API Key**（Scribe 默认 ASR / ElevenLabs TTS 时必需）— 词级转写、说话人分离，在 [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys) 获取
+- **Paraformer Token**（中文 ASR 可选）— 托管 FunASR Paraformer-large，适合中文口播字幕时间戳；写入 `PARAFORMER_API_TOKEN`，默认地址 `https://paraformer.ow2shit.top`
+- **Fish Audio API Key**（默认 TTS / 声音克隆）— 在 [Fish Audio](https://fish.audio) 获取
+- **MiMo API Key**（可选）— 仅当明确要求 MiMo 配音时需要，在 [mimo.mi.com](https://mimo.mi.com) 获取
 
 然后进入素材文件夹启动助手：
 
@@ -64,7 +65,7 @@ brew install yt-dlp             # 可选，用于下载在线素材
 
 # 3. 配置 API Key
 cp .env.example .env
-$EDITOR .env                    # 填入 ELEVENLABS_API_KEY（必需）、MIMO_API_KEY 与 FISH_API_KEY（可选）
+$EDITOR .env                    # 填入 FISH_API_KEY（默认 TTS），以及 ELEVENLABS_API_KEY 或 PARAFORMER_API_TOKEN；MIMO_API_KEY 仅在使用 MiMo 时需要
 ```
 
 ## 项目结构
@@ -74,7 +75,7 @@ video-use-ad/
 ├── SKILL.md              # 日常使用指南（助手每次会话读取）
 ├── install.md            # 首次安装指引
 ├── helpers/              # 核心脚本
-│   ├── transcribe.py         # ElevenLabs Scribe 语音转文字
+│   ├── transcribe.py         # ASR：ElevenLabs Scribe 或 Paraformer
 │   ├── transcribe_batch.py   # 批量转录
 │   ├── pack_transcripts.py   # 打包转录结果为 takes_packed.md
 │   ├── timeline_view.py      # 生成胶片+波形+文字标签的可视化图
@@ -96,7 +97,7 @@ AI 从不"看"视频，而是**读**视频 — 通过两层信息获得词级精
   <img src="static/timeline-view.svg" alt="timeline_view — 胶片+说话人轨道+波形+词标签+静音剪切候选" width="100%">
 </p>
 
-**第一层 — 音频转录（始终加载）。** 每个素材调用一次 ElevenLabs Scribe，获得词级时间戳、说话人分离和音频事件（`(笑声)`、`(掌声)`、`(叹气)`）。所有素材打包成一个约 12KB 的 `takes_packed.md` — 这是 AI 的主要阅读视图。
+**第一层 — 音频转录（始终加载）。** 每个素材调用一次 ASR（默认 ElevenLabs Scribe；中文口播可用 Paraformer），获得词级时间戳。Scribe 还会给出说话人分离和音频事件（`(笑声)`、`(掌声)`、`(叹气)`）。所有素材打包成一个约 12KB 的 `takes_packed.md` — 这是 AI 的主要阅读视图。
 
 ```
 ## C0103  (duration: 43.0s, 8 phrases)
@@ -121,30 +122,9 @@ AI 从不"看"视频，而是**读**视频 — 通过两层信息获得词级精
 
 ## AI 配音（TTS）
 
-`helpers/tts.py` 统一支持三个 provider。助手会按提示词选择：短音频快速克隆、预置音色或文本设计选 MiMo；需要保留并复用某个真实声线时选 Fish Audio；已指定 ElevenLabs 音色或希望用其音色库时选 ElevenLabs。使用声音克隆前，请确认你拥有该声音的授权。
+`helpers/tts.py` 统一支持三个 provider。**默认 Fish Audio**。仅当用户点名 MiMo 或 ElevenLabs 时才换。使用声音克隆前，请确认你拥有该声音的授权。
 
-### ElevenLabs（默认）
-
-```bash
-python helpers/tts.py --provider elevenlabs --voice <voice_id> --text "你好" --output out.mp3
-```
-
-### 小米 MiMo（三种模式）
-
-```bash
-# 预置音色（冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean 等）
-python helpers/tts.py --provider mimo --mimo-model tts --voice 冰糖 --text "你好" --output out.wav
-
-# 文本描述定制音色
-python helpers/tts.py --provider mimo --mimo-model voicedesign --style "温柔的女声" --text "你好" --output out.wav
-
-# 音频样本声音克隆（参考音频 ≤10MB，mp3/wav）
-python helpers/tts.py --provider mimo --mimo-model voiceclone --reference-audio sample.wav --text "你好" --output out.wav
-```
-
-MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，非流式调用返回 base64 编码的 wav 音频。
-
-### Fish Audio（私有可复用声音克隆）
+### Fish Audio（默认）
 
 ```bash
 # 从干净的单人参考音频创建私有音色并合成。支持 wav/mp3/m4a/opus，建议每段至少 10 秒。
@@ -163,9 +143,30 @@ python helpers/tts.py --provider fish --fish-voice-id <voice_id> \
 
 Fish Audio 克隆始终创建为 `private`；其 API Key 置于同一 `.env` 的 `FISH_API_KEY`。`--extra_params` 仅适用于 Fish，接收 JSON 对象；可调整 `temperature`、`top_p`、`repetition_penalty`、`chunk_length`、`latency`、`prosody` 等。`top_k` 会原样透传以兼容服务端扩展，但不在当前公开字段列表中。CLI 会保护文本、声线 ID、输出格式与模型选择，不能通过该参数覆盖。
 
+### ElevenLabs
+
+```bash
+python helpers/tts.py --provider elevenlabs --voice <voice_id> --text "你好" --output out.mp3
+```
+
+### 小米 MiMo（仅当用户点名时）
+
+```bash
+# 预置音色（冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean 等）
+python helpers/tts.py --provider mimo --mimo-model tts --voice 冰糖 --text "你好" --output out.wav
+
+# 文本描述定制音色
+python helpers/tts.py --provider mimo --mimo-model voicedesign --style "温柔的女声" --text "你好" --output out.wav
+
+# 音频样本声音克隆（参考音频 ≤10MB，mp3/wav）
+python helpers/tts.py --provider mimo --mimo-model voiceclone --reference-audio sample.wav --text "你好" --output out.wav
+```
+
+MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，非流式调用返回 base64 编码的 wav 音频。
+
 ## 广告视频制作（video-use-ad 子技能）
 
-仓库内置 **video-use-ad** 子技能（`skills/video-use-ad/`）：一份 ACG 风格商品宣传广告视频的**固定生产配方**，包装在通用剪辑流程之上。适合制作约 1 分钟的"云逛式"商品宣传片——商品主图轮播 + 动漫 OP/ED/Trailer 片段穿插 + ACG 梗口播文案 + MiMo 声音克隆配音 + 中文单行小字幕。
+仓库内置 **video-use-ad** 子技能（`skills/video-use-ad/`）：一份 ACG 风格商品宣传广告视频的**固定生产配方**，包装在通用剪辑流程之上。适合制作约 1 分钟的"云逛式"商品宣传片——商品主图轮播 + 动漫 OP/ED/Trailer 片段穿插 + ACG 梗口播文案 + Fish Audio 声音克隆配音 + 中文单行小字幕。
 
 ### 示例用法
 
@@ -185,7 +186,7 @@ Fish Audio 克隆始终创建为 `private`；其 API Key 置于同一 `.env` 的
 - **BGM**：必须从 YouTube 或 Bilibili 找相关动漫/游戏 OST，禁止自行生成
 - **混音**：人声 -13 LUFS，BGM 低于人声 20dB（约 -27 LUFS）且恒定不闪避，BGM 仅开头 0.5s 淡入、结尾 1.1s 淡出，人声 0.05s 淡入，限幅防削波
 - **字幕**：中文单行字幕（Hiragino Sans GB W6，1080p 基准字号 72 / 字距 1 / 四周 3px 描边，无投影，每条最多 24 字），由 `helpers/ad_subtitles.py` 按成片分辨率设置 `PlayResX/Y` 后烧录，禁止自动换行
-- **配音**：mimo-v2.5-tts-voiceclone 声音克隆，普通话
+- **配音**：Fish Audio 声音克隆，复用 `--fish-voice-id`
 
 完整规格见 [`skills/video-use-ad/SKILL.md`](./skills/video-use-ad/SKILL.md)。
 
