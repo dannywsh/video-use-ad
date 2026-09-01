@@ -1,6 +1,6 @@
 ---
 name: video-use-ad
-description: "ACG 风格商品宣传广告视频制作工作流（video-use 的专用封装）。当用户需要制作时长约 1 分钟的商品宣传/广告视频时使用：云逛式口播文案 + 商品图片与动漫视频素材混剪 + 中文单行字幕 + MiMo 声音克隆配音 + 指定 LUFS 混音。复用主技能 helpers/（render.py、tts.py、grade.py、yt-dlp 下载）。触发词：宣传广告视频、广告视频、云逛视频、ACG 宣传、商品宣传视频、产品宣传片。不适用：非广告类视频剪辑（走 video-use 主技能）。"
+description: "ACG 风格商品宣传广告视频制作工作流（video-use 的专用封装）。当用户需要制作时长约 1 分钟的商品宣传/广告视频时使用：云逛式口播文案 + 商品图片与动漫视频素材混剪 + 中文单行字幕 + Fish Audio 声音克隆配音 + 指定 LUFS 混音。复用主技能 helpers/（render.py、tts.py、grade.py、yt-dlp 下载）。触发词：宣传广告视频、广告视频、云逛视频、ACG 宣传、商品宣传视频、产品宣传片。不适用：非广告类视频剪辑（走 video-use 主技能）。"
 ---
 
 # Video Use AD — ACG 风格商品宣传广告视频
@@ -19,7 +19,7 @@ description: "ACG 风格商品宣传广告视频制作工作流（video-use 的�
 
 ## 凭证定位
 
-广告流程会同时使用 MiMo 配音与 ElevenLabs 词级转写。调用前必须先检查 `<skill_root>/.env`，其中 `<skill_root>` 是 `helpers/tts.py` 或 `helpers/transcribe.py` 解析真实路径后的父目录；随后才检查 `<cwd>/.env` 和进程环境变量。不得因当前项目目录、素材目录或 `~/Developer/...` 示例不同而认为密钥不存在。检查时按 helper 规则去除键名和值两侧空格、接受引号包裹的值，且不得输出任何密钥内容；仅当这三处均没有非空值时，才向用户索取对应的 `MIMO_API_KEY` 或 `ELEVENLABS_API_KEY`。
+广告流程默认使用 Fish Audio 配音，并用 Paraformer 对最终口播音频做词级转写（只要时间戳，不要 ASR 文案）。调用前必须先检查 `<skill_root>/.env`，其中 `<skill_root>` 是 `helpers/tts.py` 或 `helpers/transcribe.py` 解析真实路径后的父目录；随后才检查 `<cwd>/.env` 和进程环境变量。不得因当前项目目录、素材目录或 `~/Developer/...` 示例不同而认为密钥不存在。检查时按 helper 规则去除键名和值两侧空格、接受引号包裹的值，且不得输出任何密钥内容；仅当这三处均没有非空值时，才向用户索取对应的 `FISH_API_KEY` 或 `PARAFORMER_API_TOKEN`。Paraformer 不可用时，才回退到 ElevenLabs Scribe（`ELEVENLABS_API_KEY`）。不要默认使用 MiMo；仅当用户点名 MiMo 时才要 `MIMO_API_KEY`。
 
 ## 输入参数
 
@@ -29,9 +29,9 @@ description: "ACG 风格商品宣传广告视频制作工作流（video-use 的�
 |------|------|------|
 | 产品名称 | `<产品名称>` | 文案与画面围绕的产品 |
 | 素材文件夹 | `<文件夹路径>` | 商品图片、效果图所在目录 |
-| 参考声音 | `<.mp3>` | MiMo 声音克隆参考音频 |
+| 参考声音 | `<.mp3>` | Fish Audio 声音克隆参考音频（建议 ≥10 秒、干净单人声） |
 | BGM 风格 | `<风格>` | 检索关键词（作品名、OST、曲风）；只用于在 YouTube / Bilibili 找现成 BGM，禁止据此生成音乐 |
-| TTS 风格提示词 | `<用户提示词>` | 可选的语速、情绪或角色要求；只能追加到固定普通话约束之后 |
+| TTS 风格提示词 | `<用户提示词>` | 可选；Fish Audio 默认不使用。仅当用户明确要求语速/音量等，才写入 `--extra_params` |
 
 ## 执行流程
 
@@ -43,7 +43,7 @@ description: "ACG 风格商品宣传广告视频制作工作流（video-use 的�
 6. **合成视频**：按 §视频规格 制作画面。动态视频仅在其计划的语义点实际进入时间轴，不得作为与口播无关的固定装饰。
 7. **TTS 配音**：按 §TTS 规范 生成口播。
 8. **检索并下载 BGM**：按 §混音规范 从 **YouTube 或 Bilibili** 找到与产品/作品相关的现成 OST 或 BGM 并下载音频。禁止用 AI 或本地合成生成 BGM。
-9. **混音**：对无字幕的视觉成片运行 `python helpers/mix_ad_audio.py <visual.mp4> <narration.wav> <bgm.mp3> -o <mixed.mp4>`。该 helper 固定执行人声 -13 LUFS、BGM -27 LUFS、BGM 首尾淡化、无自动闪避与防削波；不得再对 `mixed.mp4` 做整轨 loudnorm。
+9. **混音**：对无字幕的视觉成片运行 `python helpers/mix_ad_audio.py <visual.mp4> <narration.mp3> <bgm.mp3> -o <mixed.mp4>`。该 helper 固定执行人声 -13 LUFS、BGM -27 LUFS、BGM 首尾淡化、无自动闪避与防削波；不得再对 `mixed.mp4` 做整轨 loudnorm。
 10. **烧录字幕**：最后执行，按 §字幕规范。字幕必须烧录到 `mixed.mp4` 上；不得先烧字幕再混音，也不得在烧录后用 `render.py` 的默认整轨 loudnorm 覆盖分轨响度。
 11. **自检交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 §对外文本禁词 检查口播、字幕、标题、简介、封面文字和标签。最终交付是一个不可拆分的三件套：`final.mp4`、按 §B站标题交付规范生成的 **1 个** 标题、以及按 §B站封面交付规范生成的 **1 张** 封面和完整提示词；任何一项缺失均不得宣告任务完成。
 
@@ -108,6 +108,7 @@ description: "ACG 风格商品宣传广告视频制作工作流（video-use 的�
 - **生成脚本（硬性）**：
 
   ```bash
+  python helpers/transcribe.py <最终口播音频> --edit-dir <edit> --provider paraformer
   python helpers/build_tts_subtitles.py <最终送入TTS的文案文件> <最终音频的词级转写JSON> -o <master.srt> --max-chars 24
   python helpers/verify_tts_subtitles.py <最终送入TTS的文案文件> <master.srt> --max-chars 24
   python helpers/ad_subtitles.py <mixed.mp4> <master.srt> -o <final.mp4> --primary-colour <ASS颜色>
@@ -182,19 +183,20 @@ description: "ACG 风格商品宣传广告视频制作工作流（video-use 的�
 
 ## TTS 规范
 
-- **模型**：`mimo-v2.5-tts-voiceclone`（声音克隆）。
-- **参考声音**：用户提供的 `<.mp3>`。
-- **语言**：普通话。
-- **固定提示词前缀**：依据 MiMo 的音色设计写法，以年龄/性别、音色、语气、节奏与场景构成 1–4 句正向描述；每次调用必须先加入以下完整内容，且不得被用户提示词替代或删改：`一位二十多岁的年轻女性，以清晰、明亮、自然的标准普通话讲解 ACG 商品。嗓音温暖有活力，语气亲切自信，语速中等偏快但吐字清楚，像在向熟悉动漫的朋友分享收藏品。发音规范、声调自然，不使用任何方言、地域口音、地方腔或日式发音；保留参考声线的音色，但以标准普通话发音为最高优先级。`
-- **用户提示词拼接规则**：若用户提供 `<用户提示词>`，最终 `--style` 必须为“固定提示词前缀 + 空格 + 用户提示词”；未提供时，`--style` 仅使用固定提示词前缀。用户提示词只能补充情绪、语速、角色或场景，不能削弱普通话与禁方言约束；若含 §对外文本禁词 中的词，先删掉再拼接。
+- **默认 provider**：Fish Audio（`--provider fish`）。不要默认使用 MiMo。
+- **模型**：`s2.1-pro-free`（可用 `--fish-model` 覆盖）。
+- **参考声音**：用户提供的 `<.mp3>` / `.wav` 等；干净单人声，建议至少 10 秒。首次调用会创建 private 克隆并打印 `--fish-voice-id`，后续同一声线只传该 ID，不要重复上传样本。
+- **语言**：跟参考声线走；不要改用 MiMo 的 `--style` / `--style-prefix`。
+- **用户提示词**：Fish 没有 MiMo 那种自然语言 `--style`。仅当用户明确要求语速或音量时，才加 `--extra_params`，例如 `'{"prosody":{"speed":1.1}}'`。含 §对外文本禁词 的词先删掉。
 - 调用方式（复用主技能 helper）：
 
   ```bash
-  python helpers/tts.py "<口播文案>" -o edit/voiceover/narration.wav \
-    --provider mimo --mimo-model voiceclone --reference-audio <参考声音.mp3> \
-    --mimo-max-chars 180 \
-    --style-prefix "一位二十多岁的年轻女性，以清晰、明亮、自然的标准普通话讲解 ACG 商品。嗓音温暖有活力，语气亲切自信，语速中等偏快但吐字清楚，像在向熟悉动漫的朋友分享收藏品。发音规范、声调自然，不使用任何方言、地域口音、地方腔或日式发音；保留参考声线的音色，但以标准普通话发音为最高优先级。" \
-    --style "<用户提示词>"
+  python helpers/tts.py "<口播文案>" -o edit/voiceover/narration.mp3 \
+    --provider fish --reference-audio <参考声音.mp3> \
+    --fish-voice-title "品牌旁白"
+  # 保存打印的 voice ID，后续复用：
+  python helpers/tts.py "<下一段口播>" -o edit/voiceover/next.mp3 \
+    --provider fish --fish-voice-id <voice_id>
   ```
 
 - 生成的配音文件写入 `<素材目录>/edit/voiceover/`，不写入项目仓库。
@@ -214,7 +216,7 @@ BGM 风格：电音。
 ```
 <素材目录>/edit/
 ├── project.md              # 会话记忆
-├── voiceover/narration.wav # 克隆人声配音
+├── voiceover/narration.mp3 # 克隆人声配音
 ├── master.srt              # 字幕（输出时间轴）
 ├── preview.mp4             # 720p 预览
 └── final.mp4               # 1920×1080 成品
