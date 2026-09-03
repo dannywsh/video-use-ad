@@ -61,7 +61,7 @@ description: "ACG 风格商品宣传广告视频制作工作流（video-use 的�
 - **运动参数必须连续**：缩放倍率和滚动位置以输出帧编号计算同一条 0–1 平滑曲线（例如 smoothstep），并在滤镜中以浮点表达式执行。禁止在逐帧循环中对缩放后的宽高、居中坐标或裁切坐标使用 `int()` / `//` 后再渲染；这会产生“停一帧、跳一像素”的抖动。
 - 缩放与滚动不能分别用不同的取整坐标系计算。长图滚动的可用纵向范围必须基于**当前帧**缩放后的图像高度计算；否则缩放变化会使裁切位置不连续。
 - 推荐用 FFmpeg `zoompan` 的 `on`（输出帧编号）驱动中心推镜，并让透明前景在模糊背景上合成；该方案避免 Python/PIL 按帧缩放带来的整数舍入抖动，也避免大量 PNG 序列写入造成的性能问题。
-- **统一实现**：商品静态图必须优先使用 `python helpers/stable_motion.py <图片> -o <片段.mp4> --mode push --duration <秒>`；详情长图使用 `--mode scroll`。该 helper 先只生成一次高分辨率合成画布，再由 `zoompan` 的 `on` 驱动中心推镜；滚动模式只在开始时缩放前景，再用一个连续的 `n` 表达式移动它。默认以 2× 输出画布渲染并 Lanczos 下采样到交付分辨率，避免缓慢运动在 1080p 整数裁切时产生 0/1 像素台阶。禁止退回到逐帧 `scale` 加 `overlay` 的组合。
+- **统一实现**：商品静态图必须优先使用 `python helpers/stable_motion.py <图片> -o <片段.mp4> --mode push --duration <秒>`；详情长图使用 `--mode scroll`。该 helper 先只生成一次高分辨率合成画布，再由 `zoompan` 的 `on` 驱动中心推镜；滚动模式只在开始时缩放前景，再用一个连续的 `n` 表达式移动它。它**强制固定以 2× 输出画布渲染**并 Lanczos 下采样到交付分辨率，且不接受覆盖该值的参数，避免缓慢运动在 1080p 整数裁切时产生 0/1 像素台阶。禁止退回到逐帧 `scale` 加 `overlay` 的组合。
 - **调用示例**：`python helpers/stable_motion.py 主图.jpg -o edit/clips_visual/main.mp4 --mode push --duration 6`；`python helpers/stable_motion.py 商详.jpg -o edit/clips_visual/detail.mp4 --mode scroll --duration 7`。
 - **自检**：动态图片分镜生成后，逐段以 1× 速度查看首段、中段、末段，并抽取连续 10 帧检查运动方向只前进、不回跳；发现抖动时必须修正运动表达式后重渲染，不得改用静态图规避问题。
 

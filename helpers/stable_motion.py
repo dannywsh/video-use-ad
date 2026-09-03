@@ -9,6 +9,10 @@ import tempfile
 from pathlib import Path
 
 
+# 以固定 2× 画布渲染后再下采样，消除慢推镜中的整数像素台阶。
+FIXED_SUPERSAMPLE = 2
+
+
 def run(command: list[str]) -> None:
     """Run one FFmpeg/FFprobe command.
 
@@ -60,12 +64,12 @@ def make_blurred_background(source: Path, output: Path, width: int, height: int)
     run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(source), "-vf", filters, "-frames:v", "1", str(output)])
 
 
-def render_push(source: Path, output: Path, duration: float, fps: int, width: int, height: int, crf: int, supersample: int) -> None:
+def render_push(source: Path, output: Path, duration: float, fps: int, width: int, height: int, crf: int) -> None:
     """Render a centre push-in without per-frame foreground scaling or positioning.
 
-    Input: source image and video parameters. Returns: None after writing an H.264 MP4.
+    Input: source image and output video parameters. Returns: None after writing an H.264 MP4 at fixed 2× supersampling.
     """
-    render_width, render_height = even(width * supersample), even(height * supersample)
+    render_width, render_height = even(width * FIXED_SUPERSAMPLE), even(height * FIXED_SUPERSAMPLE)
     canvas_width, canvas_height = even(render_width * 1.2), even(render_height * 1.2)
     frames = max(2, round(duration * fps))
     with tempfile.TemporaryDirectory(prefix="stable-motion-") as temp_dir:
@@ -92,17 +96,17 @@ def render_push(source: Path, output: Path, duration: float, fps: int, width: in
         ])
 
 
-def render_scroll(source: Path, output: Path, duration: float, fps: int, width: int, height: int, crf: int, supersample: int) -> None:
+def render_scroll(source: Path, output: Path, duration: float, fps: int, width: int, height: int, crf: int) -> None:
     """Render a top-to-bottom detail-image scroll using one static foreground scale.
 
-    Input: source image and video parameters. Returns: None after writing an H.264 MP4.
+    Input: source image and output video parameters. Returns: None after writing an H.264 MP4 at fixed 2× supersampling.
     """
     source_width, source_height = image_dimensions(source)
-    render_width, render_height = even(width * supersample), even(height * supersample)
+    render_width, render_height = even(width * FIXED_SUPERSAMPLE), even(height * FIXED_SUPERSAMPLE)
     foreground_width = even(render_width * 0.92)
     foreground_height = even(source_height * foreground_width / source_width)
     if foreground_height <= render_height:
-        render_push(source, output, duration, fps, width, height, crf, supersample)
+        render_push(source, output, duration, fps, width, height, crf)
         return
     frames = max(2, round(duration * fps))
     travel = foreground_height - render_height
@@ -135,15 +139,14 @@ def main() -> None:
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
     parser.add_argument("--crf", type=int, default=17)
-    parser.add_argument("--supersample", type=int, default=2, help="Render scale before Lanczos downsampling (default: 2)")
     args = parser.parse_args()
     if not args.source.is_file():
         parser.error(f"source does not exist: {args.source}")
-    if args.duration <= 0 or args.fps <= 0 or args.width <= 0 or args.height <= 0 or args.supersample < 1:
-        parser.error("duration, fps, width, height and supersample must be positive")
+    if args.duration <= 0 or args.fps <= 0 or args.width <= 0 or args.height <= 0:
+        parser.error("duration, fps, width and height must be positive")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     renderer = render_push if args.mode == "push" else render_scroll
-    renderer(args.source, args.output, args.duration, args.fps, args.width, args.height, args.crf, args.supersample)
+    renderer(args.source, args.output, args.duration, args.fps, args.width, args.height, args.crf)
     print(f"stable motion → {args.output} ({args.mode}, {args.duration:.2f}s)")
 
 
