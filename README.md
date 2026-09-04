@@ -49,13 +49,22 @@ claude    # 或 codex、hermes 等
 
 助手会清点素材、提出剪辑策略、等你确认，然后在素材旁边生成 `edit/final.mp4`。所有输出都在 `<videos_dir>/edit/` 目录下，项目仓库保持干净。
 
+## 安装 skill（用户）
+
+装的是本仓（dannywsh/video-use-ad），不要装上游 `browser-use/video-use`。
+
+```bash
+npx skills add dannywsh/video-use-ad -g -y
+npx skills update -g -y
+```
+
 ## 手动安装
 
 ```bash
 # 1. 克隆到稳定路径并软链接到助手的 skills 目录
 git clone https://github.com/dannywsh/video-use-ad ~/Developer/video-use-ad
-ln -sfn ~/Developer/video-use-ad ~/.claude/skills/video-use-ad     # Claude Code
-# ln -sfn ~/Developer/video-use-ad ~/.codex/skills/video-use-ad    # Codex
+ln -sfn ~/Developer/video-use-ad ~/.claude/skills/video-use     # Claude Code
+# ln -sfn ~/Developer/video-use-ad ~/.codex/skills/video-use    # Codex
 
 # 2. 安装依赖
 cd ~/Developer/video-use-ad
