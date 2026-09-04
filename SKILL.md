@@ -1,6 +1,6 @@
 ---
 name: video-use
-description: Edit any video by conversation. Transcribe, cut, color grade, generate overlay animations, burn subtitles, add AI voiceover — for talking heads, montages, tutorials, travel, interviews. No presets, no menus. Ask questions, confirm the plan, execute, iterate, persist. Production-correctness rules are hard; everything else is artistic freedom.
+description: Edit any video by conversation, or produce a ~1 minute Bilibili ACG product promo. General edits: transcribe, cut, color grade, overlays, subtitles, AI voiceover for talking heads, montages, tutorials, travel, interviews. Bilibili promo: product stills mixed with official OP/ED/Trailer, spoken product copy, Fish Audio clone, single-line Chinese captions, LUFS mix, one title and one cover. Triggers: 剪辑, 宣传广告视频, 商品宣传, ACG 宣传, 产品宣传片. Production-correctness rules are hard; general edits otherwise have artistic freedom.
 ---
 
 # Video Use
@@ -14,6 +14,13 @@ description: Edit any video by conversation. Transcribe, cut, color grade, gener
 5. **Artistic freedom is the default.** Every specific value, preset, font, color, duration, pitch structure, and technique in this document is a *worked example* from one proven video — not a mandate. Read them to understand what's possible and why each worked. Then make your own taste calls based on what the material actually is and what the user actually wants. **The only things you MUST do are in the Hard Rules section below.** Everything else is yours.
 6. **Invent freely.** If the material calls for a technique not described here — split-screen, picture-in-picture, lower-third identity cards, reaction cuts, speed ramps, freeze frames, crossfades, match cuts, L-cuts, J-cuts, speed ramps over breath, whatever — build it. The helpers are ffmpeg and PIL. They can do anything the format supports. Do not wait for permission.
 7. **Verify your own output before showing it to the user.** If you wouldn't ship it, don't present it.
+
+## Modes
+
+Pick one at session start. Do not blend the two recipes.
+
+- **General edit** (default). Existing footage: talking heads, interviews, tutorials, travel, montages. Artistic freedom except Hard Rules. Follow The process.
+- **Bilibili product promo.** Triggers: 宣传广告视频, 广告视频, 云逛视频, ACG 宣传, 商品宣传视频, 产品宣传片, or a ~1 minute Bilibili product video from stills + cloned voice. Then §Bilibili product promo is a **hard recipe** — numeric specs are mandatory unless the user overrides. Hard Rules still apply. Do not substitute general subtitle/mix taste examples for the locked promo path.
 
 ## Hard Rules (production correctness — non-negotiable)
 
@@ -74,7 +81,7 @@ First-time install lives in `install.md` (clone, deps, ffmpeg, skill registratio
 - `yt-dlp`, HyperFrames, Remotion, Manim installed only on first use.
 - First-use animation setup happens inside the slot directory, never at the video-use repo root. HyperFrames can be invoked with `npx --yes hyperframes ...`; Remotion can be scaffolded with `npx create-video@latest` or installed as a project-local dependency before using its `remotion render` command.
 - This skill vendors `skills/manim-video/`. Read its SKILL.md when building a Manim slot.
-- This skill vendors `skills/video-use-ad/`. Read its SKILL.md when the task is an ACG-style product promo video (ACG 风格商品宣传广告视频) — it is a fixed production recipe (image/video selection, script style, 1920×1080 blur backdrop, LUFS mixing, single-line subtitles, Fish Audio voice clone) layered on top of the main skill's helpers.
+- Bilibili product promo is part of this skill (not a nested skill). When that mode is active, follow §Bilibili product promo.
 
 Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this SKILL.md. Resolve their paths relative to the directory containing this file — the skill is typically symlinked at `~/.claude/skills/video-use/` or `~/.codex/skills/video-use/`.
 
@@ -89,6 +96,9 @@ Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this
 - **`grade.py <in> -o <out>`** — ffmpeg filter chain grade. Presets + `--filter '<raw>'` for custom.
 - **`bilibili_src.py <cmd>`** — Bilibili stock-source helper (good for ACG/anime/game OST and short clips). `search "<kw>" --n 5` lists candidates (bvid/title/UP主/duration); `check-watermark <BVid>` heuristically detects a burned-in watermark by checking edge detail in all four corners against the center — **run it BEFORE using any Bilibili-sourced VIDEO as stock; a watermark hit means discard that clip** (videos from YouTube/other platforms are NOT subject to this check); `download <BVid> --audio-out/--video-out [--force] [--cookies-from-browser <browser>]` pulls audio (BGM, no watermark concern) or video via yt-dlp. Video formats need a logged-in cookie (see below). This check is heuristic; visually spot-check any borderline or business-critical result.
 - **Bilibili cookie acquisition:** pass `--cookies-from-browser <chrome|firefox|edge|safari|brave>`; yt-dlp reads the already-logged-in Bilibili cookie straight from the user's local browser (no manual export). Anonymous downloads are audio-only.
+- **`stable_motion.py`** — jitter-free push/scroll of product stills for Bilibili promo. See §Bilibili product promo.
+- **`mix_ad_audio.py`** — locked promo mix (voice -13 LUFS, BGM -27 LUFS). Promo mode only.
+- **`build_tts_subtitles.py` / `verify_tts_subtitles.py` / `ad_subtitles.py`** — verbatim single-line Chinese captions for promo TTS. Promo mode only.
 
 **ASR provider choice** (do not default blindly):
 
@@ -103,6 +113,8 @@ python helpers/transcribe_batch.py <videos_dir> --provider paraformer
 For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a sub-agent via the `Agent` tool.
 
 ## The process
+
+If this session is **Bilibili product promo**, skip this section and follow §Bilibili product promo instead.
 
 1. **Inventory.** `ffprobe` every source. `transcribe_batch.py` on the directory. `pack_transcripts.py` to produce `takes_packed.md`. Sample one or two `timeline_view`s for a visual first impression.
 2. **Pre-scan for problems.** One pass over `takes_packed.md` to note verbal slips, obvious mis-speaks, or phrasings to avoid. Plain list, feed into the editor brief.
@@ -397,3 +409,184 @@ Things that consistently fail regardless of style:
 - **Editing before confirming the strategy.** Never.
 - **Re-transcribing cached sources.** Immutable outputs of immutable inputs.
 - **Assuming what kind of video it is.** Look first, ask second, edit last.
+
+## Bilibili product promo (hard recipe)
+
+Numeric specs here are production standards, not taste. Override only when the user explicitly asks. Hard Rules still apply. Credential lookup is §Setup. TTS CLI is §Voiceover / TTS (default Fish Audio; strip §对外文本禁词 from `--extra_params`; write files to `<videos_dir>/edit/voiceover/`).
+
+### 对外文本禁词（硬性）
+
+面向观众或平台发布的文本，禁止出现制作配方用语和提示词。适用范围：口播文案、烧录字幕、B站标题、投稿简介、封面画面文字、标签。
+
+禁止出现：云逛、口播、混剪、资讯、宣传片、广告、配方、提示词、BGM、字幕、封面。
+
+这些词只留在本技能的内部说明里，不得写进任何将要发布或给观众看的句子。送入 TTS、封面模型的提示词同样不得使用上述禁词。
+
+### 输入参数
+
+每次任务开始先收集以下参数，缺失时追问，不猜测：
+
+| 参数 | 占位 | 说明 |
+|------|------|------|
+| 产品名称 | `<产品名称>` | 文案与画面围绕的产品 |
+| 素材文件夹 | `<文件夹路径>` | 商品图片、效果图所在目录 |
+| 参考声音 | `<.mp3>` | Fish Audio 声音克隆参考音频（建议 ≥10 秒、干净单人声） |
+| BGM 风格 | `<风格>` | 检索关键词（作品名、OST、曲风）；只用于在 YouTube / Bilibili 找现成 BGM，禁止据此生成音乐 |
+| TTS 风格提示词 | `<用户提示词>` | 可选；Fish Audio 默认不使用。仅当用户明确要求语速/音量等，才写入 `--extra_params` |
+
+### 执行流程
+
+1. **清点素材**：`ffprobe` 检查视频素材，列出素材文件夹全部图片，按"商品主图 / 效果图 / 详情图"分类，剔除文字过多的图片。
+2. **评估并按需收集视频素材**：先依据文案和商品图判断是否需要外部动态画面。它只能承担一个明确任务：建立作品世界观、在角色/设定转换时提供承接，或在连续静态画面后重置节奏；若没有能完成该任务的官方镜头，或它会遮蔽商品细节，就不使用。相关动漫、游戏的官方 OP / ED / Trailer 可从 **YouTube 或 Bilibili** 下载，两个来源平级：YouTube 用 `yt-dlp` 检索并下载视频；Bilibili 先用 `python helpers/bilibili_src.py search "<关键词>" --n 5` 找到 BV 号，再运行 `python helpers/bilibili_src.py check-watermark <BVid>`，未命中水印后必须用 `python helpers/bilibili_src.py download <BVid> --video-out <输出路径>` 下载**视频画面**（需要时加 `--cookies-from-browser <browser>`），而非只下载音频。仅当素材来自 Bilibili 时需要该水印检查；YouTube/其他平台来源的视频无需水印检测。若选择视频，记录其来源、源时间码、计划插入的口播语义点与输出时间窗；不为凑数量下载或插入。
+3. **检索设定**：在 <https://zh.moegirl.org.cn/> 查找产品相关动漫设定与梗，供文案使用。
+4. **撰写文案**：按 §文案规范 起草口播文案，并给出每段对应的画面/图片搭配方案。
+5. **确认方案**：把文案 + 素材搭配展示给用户，确认后再制作（文案是创作性产物，先确认避免返工）。若选择了动态视频，标明它服务的口播语义点与输出时间窗；若未选择，说明商品图如何独立完成节奏。不能只列 BGM 或下载链接。
+6. **合成视频**：按 §视频规格 制作画面。动态视频仅在其计划的语义点实际进入时间轴，不得作为与口播无关的固定装饰。
+7. **TTS 配音**：按 §Voiceover / TTS 生成口播。
+8. **检索并下载 BGM**：按 §混音规范 从 **YouTube 或 Bilibili** 找到与产品/作品相关的现成 OST 或 BGM 并下载音频。禁止用 AI 或本地合成生成 BGM。
+9. **混音**：对无字幕的视觉成片运行 `python helpers/mix_ad_audio.py <visual.mp4> <narration.mp3> <bgm.mp3> -o <mixed.mp4>`。该 helper 固定执行人声 -13 LUFS、BGM -27 LUFS、BGM 首尾淡化、无自动闪避与防削波；不得再对 `mixed.mp4` 做整轨 loudnorm。
+10. **烧录字幕**：最后执行，按 §字幕规范。字幕必须烧录到 `mixed.mp4` 上；不得先烧字幕再混音，也不得在烧录后用 `render.py` 的默认整轨 loudnorm 覆盖分轨响度。
+11. **自检交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 §对外文本禁词 检查口播、字幕、标题、简介、封面文字和标签。最终交付是一个不可拆分的三件套：`final.mp4`、按 §B站标题交付规范生成的 **1 个** 标题、以及按 §B站封面交付规范生成的 **1 张** 封面和完整提示词；任何一项缺失均不得宣告任务完成。
+
+### 图片素材规范
+
+- **选图优先级**：商品本体图为主，尽量多使用主图；少量商品详情图；**尽量不使用文字过多的图片**。
+- **画面适配**（每张图进入 1920×1080 画布时）：
+  - 图片高度不足画布高度 → **等比例放大**，占满画面高度（允许裁切左右）。
+  - 图片高度大于画布 → **缓慢滚动播放**（垂直匀速滚动），不要瞬间跳切。
+- 文案与图片内容尽量匹配：讲到哪张图就展示哪张图。
+
+#### 动态图片分镜稳定性
+
+- 商品主图可采用缓慢中心推镜，详情长图可采用缓慢纵向滚动；背景、清晰前景和暗角先各生成一次静态资产，再由同一条视频滤镜链驱动运动。不得为每一帧重新生成背景或前景位图。
+- **运动参数必须连续**：缩放倍率和滚动位置以输出帧编号计算同一条 0–1 平滑曲线（例如 smoothstep），并在滤镜中以浮点表达式执行。禁止在逐帧循环中对缩放后的宽高、居中坐标或裁切坐标使用 `int()` / `//` 后再渲染；这会产生“停一帧、跳一像素”的抖动。
+- 缩放与滚动不能分别用不同的取整坐标系计算。长图滚动的可用纵向范围必须基于**当前帧**缩放后的图像高度计算；否则缩放变化会使裁切位置不连续。
+- 推荐用 FFmpeg `zoompan` 的 `on`（输出帧编号）驱动中心推镜，并让透明前景在模糊背景上合成；该方案避免 Python/PIL 按帧缩放带来的整数舍入抖动，也避免大量 PNG 序列写入造成的性能问题。
+- **统一实现**：商品静态图必须优先使用 `python helpers/stable_motion.py <图片> -o <片段.mp4> --mode push --duration <秒>`；详情长图使用 `--mode scroll`。该 helper 先只生成一次高分辨率合成画布，再由 `zoompan` 的 `on` 驱动中心推镜；滚动模式只在开始时缩放前景，再用一个连续的 `n` 表达式移动它。它**强制固定以 2× 输出画布渲染**并 Lanczos 下采样到交付分辨率，且不接受覆盖该值的参数，避免缓慢运动在 1080p 整数裁切时产生 0/1 像素台阶。禁止退回到逐帧 `scale` 加 `overlay` 的组合。
+- **调用示例**：`python helpers/stable_motion.py 主图.jpg -o edit/clips_visual/main.mp4 --mode push --duration 6`；`python helpers/stable_motion.py 商详.jpg -o edit/clips_visual/detail.mp4 --mode scroll --duration 7`。
+- **自检**：动态图片分镜生成后，逐段以 1× 速度查看首段、中段、末段，并抽取连续 10 帧检查运动方向只前进、不回跳；发现抖动时必须修正运动表达式后重渲染，不得改用静态图规避问题。
+
+### 视频素材规范
+
+- **来源优先级**：视频素材可来自 **YouTube** 或 **Bilibili** 两个平级来源，均**仅限相关动漫、游戏视频的 OP / ED / Trailer 类型**；**明确排除玩家二创、同人剪辑、游戏实况、reaction 等任何其他来源类型**。两者择一或混用，按素材质量与可用性决定。
+  - **Bilibili 素材获取**（`helpers/bilibili_src.py`）：
+    - 检索：`python helpers/bilibili_src.py search "<关键词>" --n 5`（返回 bvid / 标题 / UP主 / 时长）。
+    - 下载前必先做水印检测（仅 B 站视频）：`python helpers/bilibili_src.py check-watermark <BVid>`，命中即弃用该视频；检测查四角边缘细节（B 站水印常见于右上角），属启发式，重要片段建议肉眼抽检。YouTube/其他平台视频免检。
+    - 取素材：`python helpers/bilibili_src.py download <BVid> --video-out ...` 取片段、`--audio-out` 取 BGM（音频无视觉水印，不受水印检测限制）。
+    - 视频流 Cookie：命令加 `--cookies-from-browser <chrome|firefox|edge|safari|brave>`，yt-dlp 直接读本机已登录 B 站的浏览器 cookie（无需手动导出）；匿名则仅音频可用。
+- **叙事优先**：外部动态画面是可选素材，不是配方要求。优先让商品主图、效果图和详情图承担展示；仅在它能为“世界观建立、角色/设定承接、节奏重置”中的至少一项提供商品图做不到的价值时采用。选择镜头时，以自然口播停顿、角色名/设定词落点、或静态图信息展示结束后的呼吸点作为进入和离开位置；镜头停留以观众看清其功能为准，不设固定数量、时长或总占比。若没有自然落点，宁可不插入。
+- 若使用片段，它必须是真实编码进成片的动态画面，且与相邻商品图在色彩、方向与情绪上连贯；不得以“已下载”“仅作 BGM”或静态首帧替代，也不得为了满足镜头数量而重复同类画面。
+
+### 文案规范（口播脚本）
+
+- **体裁**：资讯类"云逛"口播——滚动播放资讯/商品图片，配合口播解说。
+- **风格**：多放动漫梗，引起 ACG 爱好者共鸣；结合素材文件夹中的效果图介绍产品；结合动漫设定展开（设定信息查 moegirl）。
+- **表达**：必须口语化，只讲这件商品；**禁止**出现逻辑总结类词语（如"总之""综上所述""最后总结一下"）；**禁止分点列条**。对外用词见 §对外文本禁词。
+- **数字**：金额、数量、尺寸、比例等量化信息一律用阿拉伯数字（如「199元」「2.0」「1/7」），禁止写成中文数字（如「一百九十九元」「二点零」）。口语虚词如「一个」「一下」保持汉字。送入 TTS 的文案和烧录字幕都必须保留分数线，禁止把「1/7」改成「17」或「1 7」。
+
+### 视频规格
+
+- 画布：**1920×1080**。
+- 背景：**高斯模糊填充**——原图放大铺满并高斯模糊作为背景层，前景叠放适配后的清晰画面。
+
+### 混音规范（人声为主，数值硬性）
+
+| 轨 | 响度目标 | 说明 |
+|----|----------|------|
+| 口播人声 | **-13 LUFS** | 保持自然清晰的原始响度，不做多余处理 |
+| BGM | 低于人声 **20dB**（约 -27 LUFS） | 固定为人声音量的约 **10%**，全程恒定 |
+
+- **BGM 恒定**：不随人声出现、停顿或强弱自动降低；**不使用侧链压缩或自动闪避**（ducking）。
+- **淡入淡出**：BGM 仅开头 **0.5 秒**淡入、结尾 **1.1 秒**淡出，避免突兀起止；人声开头 **0.05 秒**淡入。
+- **防削波**：最终混音限制峰值（loudnorm / alimiter），避免削波失真。
+- **BGM 来源（硬性）**：必须从 **YouTube 或 Bilibili** 检索并下载与产品相关动漫/游戏的现成 OST、OP/ED 音源或官方 BGM。两个来源平级。YouTube 用 `yt-dlp` 搜并抽音频；Bilibili 用 `python helpers/bilibili_src.py search "<作品名 或 风格> OST"` 找到 BV 号后 `download <BVid> --audio-out ...`（音频无视觉水印，无需水印检测）。也可从本次已下载的 YouTube/Bilibili 视频素材中提取音轨，前提是该视频本身来自这两个平台。检索优先用作品名、角色名、官方曲名；`<风格>` 只作辅助关键词。必须记录曲名/来源 URL。
+- **禁止自行生成 BGM**：不得用 TTS、Suno、Udio、音乐模型、MIDI、循环素材拼贴或任何本地合成来“做一条 BGM”。找不到相关曲目时换关键词继续搜，不得用生成音乐凑数。
+- **执行脚本**：必须使用 `helpers/mix_ad_audio.py` 完成混音。该脚本先分别两遍标准化人声与 BGM，再以 `amix=normalize=0` 固定叠加，避免 FFmpeg 默认归一化把已达标的人声再次降低。
+
+### 字幕规范（中文单行字幕）
+
+样式锁在 `helpers/ad_subtitles.py`，禁止手写或改写 `force_style`。该 helper 会 `ffprobe` 成片宽高，把 `PlayResX/PlayResY` 设成**当前视频的显示分辨率**，再按 `height/1080` 缩放字号、字距、描边和边距。只写 `PlayResY=1080` 会让 libass 用 4:3 的 `PlayResX=1440`，在 1920×1080 上把字横向拉宽，禁止那样烧录。
+
+- **生成脚本（硬性）**：
+
+  ```bash
+  python helpers/transcribe.py <最终口播音频> --edit-dir <edit> --provider paraformer
+  python helpers/build_tts_subtitles.py <最终送入TTS的文案文件> <最终音频的词级转写JSON> -o <master.srt> --max-chars 24
+  python helpers/verify_tts_subtitles.py <最终送入TTS的文案文件> <master.srt> --max-chars 24
+  python helpers/ad_subtitles.py <mixed.mp4> <master.srt> -o <final.mp4> --primary-colour <ASS颜色>
+  ```
+
+  广告流程禁止对 TTS 成片使用 `render.py --build-subtitles`，该路径会采用 ASR 文本。`verify_tts_subtitles.py` 失败即禁止烧录（Hard Rule 13）。
+- **锁定样式（1080p 基准，按成片高度缩放）**：Hiragino Sans GB W6，`FontSize=72`，`Spacing=1`，`Outline=3`（四周细描边），`Shadow=0`，`WrapStyle=2`，`MarginV=8`，左右 `MarginL/R=64`。烧录时必须同时带上 `PlayResX=<视频宽>` 和 `PlayResY=<视频高>`；720p / 4K 由 helper 自动缩放，不要手填。Linux 或未安装冬青黑体时，只允许把 `FontName` 换成 `Noto Sans SC`。
+- **单行（硬性）**：每条字幕必须只有一行。`--max-chars 24` 按语义切分，超长子句由脚本硬切，禁止一条里出现换行。烧录用 `WrapStyle=2`，即使文本偏长也不许折成两行。
+- **颜色与对比度**：默认白色 `&H00FFFFFF`。若产品有指定高亮色，用 `--primary-colour` 覆盖，必须仍是高亮度浅色；禁止低亮度或接近画面暗部的颜色。抽查首帧、中段、尾帧确认可读。粉色 `&H00FF8FCF` 只是可选强调色，不是默认字幕色。
+- **特效**：只用四周细描边；**不使用**底框、投影阴影、弹跳或花哨特效。
+- **烧录顺序**：必须在所有画面、转场和叠加层完成后**最后烧录**，确保始终位于最上层不被遮挡（Hard Rule 1）。
+- **文字**：字幕文字必须逐字采用最终送入 TTS 的口播文案，且顺序完全一致。句读标点（。！？；，、）换成空格后，中文汉字之间的多余空格由脚本去掉；分数线 `/`、小数点、百分号、比例冒号等量化符号必须原样保留（「1/7」不得变成「1 7」）。字距只由 `Spacing=1` 控制。不得根据 ASR 文本改写、纠错、概括、删减或补写字幕。
+- 每条字幕时长与文案自然停顿对齐，不手估时间。ASR/强制对齐**只用于取得最终音频的词级时间戳**。
+
+### B站投稿简介规范
+
+投稿简介只写给观众的产品与活动信息。用词见 §对外文本禁词；另不得写入内部制作过程、工具参数、文件路径、凭证或调试日志。
+
+- 除非用户明确要求，简介不放素材来源 URL；需要记录授权或来源时，写入 `<素材目录>/edit/project.md`。用户明确要求外链时，链接必须独占一行，并在发布后核对平台没有扩大自动链接范围。
+- 使用 API 或 CLI 发送简介时，必须传递真实换行符。禁止在单引号参数中写字面量 `\\n`、`\\r\\n` 或其他转义文本。
+- 默认建议三行：一句产品定位、一句可见卖点、最后一行活动或行动信息。用户提供且要求保留的活动文案必须照录；不得自行添加营销口号。
+- 发送前校验：简介符合 §对外文本禁词，且不得包含字面量反斜杠转义、文件系统路径、凭证标识，或非用户要求的 URL。
+- 每次新投稿或编辑后，必须运行 `biliup show <BV>` 回读 `archive.desc`，精确核对文本、真实换行与链接范围。回读不一致时，停止商品挂载、评论等后续发布动作；修正简介并再次回读通过后才能继续。
+
+### B站标题交付规范
+
+最终视频交付时，必须同时提供 **1 个** 可直接发布的 B站标题；它与封面、成片同为强制交付物。标题生成前确认产品全名与常用圈内昵称；产品名称可写为“全名（圈内昵称）”，但不得编造昵称、场景或上手体验。用词见 §对外文本禁词。
+
+只写这件商品：品类、外观、IP/角色、材质或一个真实卖点。
+
+- 标题开头必须是“具体卖点／产品特质 + 强烈感受”的完整短句，再用感叹号衔接产品名。优先让卖点本身成为钩子，例如“桌面萌力超标！”“压迫感炸场！”“反差萌拉满！”。禁止使用“救命啊”“谁顶得住”“我破防了”等空泛语气词作为开头。
+- 必须露出产品具体名或圈内昵称；只使用本商品自带的 IP、角色或圈层称呼。
+- 用反差或悬念时，必须来自这件商品的外观或用途，不得使用“最”“第一”“100%”等绝对化表述。
+- 文风应像真人发布：简洁、口语化、信息具体；不堆砌标签，不使用营销腔和标题党式承诺
+
+**标题输出格式：** `B站标题：<单行标题>`。除这 1 个最终标题外，不提供备选列表。交付前自检：删掉商品名、卖点和 IP 后若仍能套到任意商品上，必须重写。
+
+### B站封面交付规范
+
+最终视频交付时，必须同时输出 **1 张** B站封面图和 **1 段本次实际使用的完整封面提示词**；封面是强制交付物。封面固定为 **16:9 横版**，优先使用实际商品图或用户提供的角色图作为前景主体，确保产品外观、颜色、材质与关键细节真实可辨。B站会同时使用 16:9 原图和由它裁出的 4:3 封面，因此商品、标题和关键细节必须落在画面正中的 4:3 安全区内。
+
+- **生图工具顺序（硬性）**：封面必须先用运行环境自带的图像生成。Grok 用 `image_gen` / `image_edit`；Codex 用 `$imagegen` 内置的 `image_gen`（不要默认改走 Codex 的 `scripts/image_gen.py` CLI）。仅当自带生图不可用、报错、或明确无法满足本规范（例如无法按参考图出图、无法锁定 16:9）时，才允许改用 Seedream。禁止把 Seedream 当作封面的默认或首选。用户明确点名 Seedream 时除外。
+- **画布比例与安全区分离（硬性）**：16:9 是最终交付文件的画布比例；4:3 只是其内部的居中安全区，绝不是模型应输出的画布比例。提示词必须先单独、明确地锁定“最终画布仅可为 16:9 宽屏，禁止 4:3、方形和竖图”，再描述安全区。生成后必须用 `sips -g pixelWidth -g pixelHeight <cover>` 或等效方式核验宽高比在 16:9 的 ±1% 内；不满足时不得上传或交付，必须以“修正最终画布为 16:9，保留安全区构图”重新生成。
+- **模型直出文字（硬性）**：封面中的所有文字、艺术字、描边、阴影和排版必须由图像模型在同一次生成中直接完成。**禁止**在模型生成后使用 FFmpeg、PIL、Photoshop、Canva 或任何其他方式添加、替换、修复或拼接文字／艺术字；可仅做不改变画面内容的文件格式或尺寸转换。模型未能逐字正确生成已确认文字时，必须重新生成封面，不得后期补字。
+- **4:3 安全区（硬性）**：在 16:9 画布上，安全区是水平居中、高度拉满的 4:3 矩形，约占画面宽度中间 75%（左右各约 12.5% 会被 4:3 裁掉）。商品主体、脸部、包装、主标题、副标题和关键卖点必须完整落在该矩形内；左右两侧只允许可裁切的空背景或极淡氛围，不得放文字或商品轮廓。
+- **构图**：商品必须是视觉主体，位于前景并占 **4:3 安全区** 约 45%–60%，清晰、大尺寸、有层次；标题不是独立贴片，而要与商品的颜色、轮廓、包装、光效或场景形成一体化构图。标题放在商品附近、仍在安全区内，可贴近商品侧边、由商品留白承接或被商品局部环绕，但不得遮挡商品脸部、主体或关键卖点，也不得贴到 16:9 左右边缘。
+- **背景克制（硬性）**：背景必须干净、简洁、低信息密度，只承担衬托商品与标题的作用。优先使用纯色／柔和渐变／极少量光晕或纹理；禁止堆叠舞台布景、密集装饰、过多粒子、复杂道具或与商品无关的视觉元素。商品与标题必须是 16:9 和 4:3 两种缩略图中的第一阅读层级。
+- **文字**：仅使用已确认的主标题和可选副标题，要求逐字准确；主标题通常为产品具体名或圈内昵称，控制在 4–10 字，副标题控制在 6–14 字。全部文字必须落在 4:3 安全区内。艺术字必须在网页缩略图中清晰可读，使用高亮文字搭配深色描边或阴影，禁止低对比度。
+- **风格**：背景与产品调性一致，可使用适量 ACG 氛围元素，例如星光、柔和发光或漫画质感；画面要有明确焦点，色彩饱满但不杂乱。
+- **限制**：无水印、无 Logo、无英文、无乱码、无多余文字、无无关主体、无畸形产品。
+
+**通用模型提示词模板：**
+
+```text
+生成一张用于 B站视频封面的高点击率图片。**最终输出画布必须是 16:9 宽屏（例如 1920×1080）；禁止生成 4:3、方形或竖图。** B站会把这张 16:9 原图再裁成 4:3；下文的 4:3 只表示画面内部安全区，不表示输出画布比例。商品、文字和关键细节必须全部落在画面正中的 4:3 安全区：水平居中、高度拉满、约占宽度中间 75%；左右各约 12.5% 只能是可裁切的空背景。
+
+主题：<视频主题/产品名>
+参考素材：<上传的产品图、角色图或人物图>。必须保留主体的真实外观、颜色、材质、关键细节与辨识度，不添加无关主体。
+
+构图：商品主体位于前景，并完整待在正中 4:3 安全区内，占该安全区约 45%–60%，清晰、大尺寸、有层次；背景采用干净、低信息密度的 <纯色/柔和渐变/极少量光晕>，只衬托商品与标题。商品与标题必须构成一个整体：让商品的色彩、轮廓或少量光效自然承接标题，标题不应像后贴的独立卡片；不得遮挡主体脸部、关键卖点和轮廓；不得把文字或商品轮廓放到左右将被裁掉的区域。
+
+文字：只出现以下文字，必须逐字准确，且全部放在正中 4:3 安全区内：
+“<主标题，4–10字>”
+“<可选副标题，6–14字>”
+文字、艺术字、描边、阴影与排版必须由图像模型在本次生成中直接完成，不得在生成后添加、修复、替换或拼接。文字采用醒目、立体、与整体色调协调的艺术字；主标题在网页缩略图中也清晰可读。高亮文字搭配深色描边或阴影，避免低对比度。
+
+风格：精致商业宣传图，视觉焦点明确，色彩饱满但不刺眼，适合 B站 16:9 与 4:3 两种列表缩略图。
+限制：无水印、无 Logo、无英文、无乱码、无多余文字、无夸张畸形主体、无杂乱背景、无密集装饰、无与商品无关的道具、无贴边文字、无贴边主体。
+```
+
+**封面交付格式：** `B站封面：<文件链接>`，随后附 `封面提示词：<本次填充完成的完整提示词>`。提示词必须保留用户产品、素材、文字和构图信息，不得只交付空白模板。
+
+### 示例
+
+```text
+使用 skill: video-use 任务：制作一个时长一分钟左右关于「明日香」手办的宣传广告视频，
+素材在 <素材文件夹> 文件夹中。参考声音用 <参考声音.mp3>，
+BGM 风格：电音。
+```
