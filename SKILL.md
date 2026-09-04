@@ -1,6 +1,14 @@
 ---
 name: video-use
-description: Edit any video by conversation, or produce a Bilibili ACG product promo. General edits: transcribe, cut, color grade, overlays, subtitles, AI voiceover for talking heads, montages, tutorials, travel, interviews. Bilibili promo: product stills mixed with official OP/ED/Trailer, spoken product copy, Fish Audio clone, single-line Chinese captions, LUFS mix, one title and one cover. Runtime comes from the user prompt, not a skill default. Triggers: 剪辑, 宣传广告视频, 商品宣传, ACG 宣传, 产品宣传片. Production-correctness rules are hard; general edits otherwise have artistic freedom.
+description: >
+  Edit any video by conversation, or produce a Bilibili ACG product promo.
+  General edits include transcribe, cut, color grade, overlays, subtitles, and AI voiceover
+  for talking heads, montages, tutorials, travel, interviews.
+  Bilibili promo uses product stills mixed with official OP/ED/Trailer, spoken product copy,
+  Fish Audio clone, single-line Chinese captions, LUFS mix, one title and one cover.
+  Runtime comes from the user prompt, not a skill default.
+  Triggers: 剪辑, 宣传广告视频, 商品宣传, ACG 宣传, 产品宣传片.
+  Production-correctness rules are hard; general edits otherwise have artistic freedom.
 ---
 
 # Video Use
