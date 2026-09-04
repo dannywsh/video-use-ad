@@ -1,6 +1,6 @@
 ---
 name: video-use
-description: Edit any video by conversation, or produce a ~1 minute Bilibili ACG product promo. General edits: transcribe, cut, color grade, overlays, subtitles, AI voiceover for talking heads, montages, tutorials, travel, interviews. Bilibili promo: product stills mixed with official OP/ED/Trailer, spoken product copy, Fish Audio clone, single-line Chinese captions, LUFS mix, one title and one cover. Triggers: 剪辑, 宣传广告视频, 商品宣传, ACG 宣传, 产品宣传片. Production-correctness rules are hard; general edits otherwise have artistic freedom.
+description: Edit any video by conversation, or produce a Bilibili ACG product promo. General edits: transcribe, cut, color grade, overlays, subtitles, AI voiceover for talking heads, montages, tutorials, travel, interviews. Bilibili promo: product stills mixed with official OP/ED/Trailer, spoken product copy, Fish Audio clone, single-line Chinese captions, LUFS mix, one title and one cover. Runtime comes from the user prompt, not a skill default. Triggers: 剪辑, 宣传广告视频, 商品宣传, ACG 宣传, 产品宣传片. Production-correctness rules are hard; general edits otherwise have artistic freedom.
 ---
 
 # Video Use
@@ -20,7 +20,7 @@ description: Edit any video by conversation, or produce a ~1 minute Bilibili ACG
 Pick one at session start. Do not blend the two recipes.
 
 - **General edit** (default). Existing footage: talking heads, interviews, tutorials, travel, montages. Artistic freedom except Hard Rules. Follow The process.
-- **Bilibili product promo.** Triggers: 宣传广告视频, 广告视频, 云逛视频, ACG 宣传, 商品宣传视频, 产品宣传片, or a ~1 minute Bilibili product video from stills + cloned voice. Then §Bilibili product promo is a **hard recipe** — numeric specs are mandatory unless the user overrides. Hard Rules still apply. Do not substitute general subtitle/mix taste examples for the locked promo path.
+- **Bilibili product promo.** Triggers: 宣传广告视频, 广告视频, 云逛视频, ACG 宣传, 商品宣传视频, 产品宣传片, or a Bilibili product video from stills + cloned voice. Then §Bilibili product promo is a **hard recipe** — numeric specs are mandatory unless the user overrides. Runtime is whatever the user wrote in the prompt; do not assume a length. Hard Rules still apply. Do not substitute general subtitle/mix taste examples for the locked promo path.
 
 ## Hard Rules (production correctness — non-negotiable)
 
@@ -429,6 +429,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 | 参数 | 占位 | 说明 |
 |------|------|------|
 | 产品名称 | `<产品名称>` | 文案与画面围绕的产品 |
+| 成片时长 | `<时长>` | 只从用户提示词读取；缺失时追问，不默认任何时长 |
 | 素材文件夹 | `<文件夹路径>` | 商品图片、效果图所在目录 |
 | 参考声音 | `<.mp3>` | Fish Audio 声音克隆参考音频（建议 ≥10 秒、干净单人声） |
 | BGM 风格 | `<风格>` | 检索关键词（作品名、OST、曲风）；只用于在 YouTube / Bilibili 找现成 BGM，禁止据此生成音乐 |
@@ -481,7 +482,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 - **体裁**：资讯类"云逛"口播——滚动播放资讯/商品图片，配合口播解说。
 - **风格**：多放动漫梗，引起 ACG 爱好者共鸣；结合素材文件夹中的效果图介绍产品；结合动漫设定展开（设定信息查 moegirl）。
-- **表达**：必须口语化，只讲这件商品；**禁止**出现逻辑总结类词语（如"总之""综上所述""最后总结一下"）；**禁止分点列条**。对外用词见 §对外文本禁词。
+- **表达**：必须口语化，只讲这件商品；口播篇幅按用户给出的成片时长写，不自行改成别的长度；**禁止**出现逻辑总结类词语（如"总之""综上所述""最后总结一下"）；**禁止分点列条**。对外用词见 §对外文本禁词。
 - **数字**：金额、数量、尺寸、比例等量化信息一律用阿拉伯数字（如「199元」「2.0」「1/7」），禁止写成中文数字（如「一百九十九元」「二点零」）。口语虚词如「一个」「一下」保持汉字。送入 TTS 的文案和烧录字幕都必须保留分数线，禁止把「1/7」改成「17」或「1 7」。
 
 ### 视频规格
@@ -586,7 +587,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 ### 示例
 
 ```text
-使用 skill: video-use 任务：制作一个时长一分钟左右关于「明日香」手办的宣传广告视频，
+使用 skill: video-use 任务：制作一个关于「明日香」手办的宣传广告视频，时长 <时长>。
 素材在 <素材文件夹> 文件夹中。参考声音用 <参考声音.mp3>，
 BGM 风格：电音。
 ```
