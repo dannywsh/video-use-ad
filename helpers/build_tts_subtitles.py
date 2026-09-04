@@ -9,12 +9,29 @@ import re
 from pathlib import Path
 
 
+# Pause / clause marks become spaces in captions. Quantity marks stay:
+# fraction slash, decimal point, percent, ratio colon, plus/minus.
+CLAUSE_PUNCTUATION = re.compile(r"[。！？；，、!?…「」『』（）()【】\[\]《》<>\"']+")
+
+
 def normalized_characters(text: str) -> str:
     """Keep only spoken letters and digits for script-to-ASR alignment.
 
     Input: source script or ASR text. Returns: a punctuation-free comparison string.
     """
     return "".join(char.lower() for char in text if char.isalnum())
+
+
+def format_caption_text(chunk: str) -> str:
+    """Turn a script chunk into one on-screen caption line.
+
+    Input: a source-text chunk that may still contain punctuation.
+    Returns: caption text with clause punctuation as spaces, CJK-to-CJK
+    extra spaces removed, and quantity marks such as 1/7 and 2.0 kept.
+    """
+    caption = CLAUSE_PUNCTUATION.sub(" ", chunk)
+    caption = re.sub(r"\s+", " ", caption).strip()
+    return re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])", "", caption)
 
 
 def srt_timestamp(seconds: float) -> str:
@@ -134,9 +151,7 @@ def build_srt(script: str, words: list[dict], maximum_characters: int) -> str:
         end_asr = mapping[end_source]
         start_word = spoken_words[asr_char_to_word[start_asr]]
         end_word = spoken_words[asr_char_to_word[end_asr]]
-        caption = re.sub(r"[^\w\s]", " ", chunk)
-        caption = re.sub(r"\s+", " ", caption).strip()
-        caption = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])", "", caption)
+        caption = format_caption_text(chunk)
         if "\n" in caption:
             raise ValueError("caption cue contains a line break; ad subtitles must stay one line")
         if len(normalized_characters(caption)) > maximum_characters:
