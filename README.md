@@ -166,12 +166,12 @@ MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，�
 
 ## B 站商品宣传片（同一 skill 的硬配方）
 
-`video-use` 一种模式，不是第二个 skill。适合制作约 1 分钟的商品宣传片——商品主图轮播 + 动漫 OP/ED/Trailer 片段穿插 + ACG 梗口播文案 + Fish Audio 声音克隆配音 + 中文单行小字幕 + 标题封面。
+`video-use` 一种模式，不是第二个 skill。适合制作商品宣传片——商品主图轮播 + 动漫 OP/ED/Trailer 片段穿插 + ACG 梗口播文案 + Fish Audio 声音克隆配音 + 中文单行小字幕 + 标题封面。成片时长由用户在提示词里给出。
 
 ### 示例用法
 
 ```text
-使用 skill: video-use 任务：制作一个时长一分钟左右关于「<产品名称>」的宣传广告视频，
+使用 skill: video-use 任务：制作一个关于「<产品名称>」的宣传广告视频，时长 <时长>。
 素材在 <文件夹路径> 文件夹中。参考声音用 <.mp3>，BGM 风格：<风格>。
 ```
 
