@@ -11,6 +11,7 @@ Usage:
     python helpers/transcribe_batch.py <videos_dir> --workers 4
     python helpers/transcribe_batch.py <videos_dir> --num-speakers 2
     python helpers/transcribe_batch.py <videos_dir> --edit-dir /custom/edit
+    python helpers/transcribe_batch.py <videos_dir> --audio-track 1
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from transcribe import PROVIDERS, transcribe_one
+from transcribe import PROVIDERS, transcribe_one, transcript_path
 
 
 VIDEO_EXTS = {".mp4", ".MP4", ".mov", ".MOV", ".mkv", ".MKV", ".avi", ".AVI", ".m4v"}
@@ -63,6 +64,12 @@ def main() -> None:
         default="elevenlabs",
         help="ASR provider (default: elevenlabs)",
     )
+    ap.add_argument(
+        "--audio-track",
+        type=int,
+        default=0,
+        help="Zero-based audio track to transcribe (OBS: 0 = game, 1 = mic).",
+    )
     args = ap.parse_args()
 
     videos_dir = args.videos_dir.resolve()
@@ -76,7 +83,10 @@ def main() -> None:
     if not videos:
         sys.exit(f"no videos found in {videos_dir}")
 
-    already_cached = [v for v in videos if (edit_dir / "transcripts" / f"{v.stem}.json").exists()]
+    already_cached = [
+        v for v in videos
+        if transcript_path(edit_dir, v, args.audio_track).exists()
+    ]
     pending = [v for v in videos if v not in already_cached]
 
     print(f"found {len(videos)} videos ({len(already_cached)} cached, {len(pending)} to transcribe)")
@@ -98,6 +108,7 @@ def main() -> None:
                 num_speakers=args.num_speakers,
                 verbose=False,
                 provider=args.provider,
+                audio_track=args.audio_track,
             ): v
             for v in pending
         }
