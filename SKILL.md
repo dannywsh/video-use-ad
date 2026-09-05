@@ -35,10 +35,10 @@ Pick one at session start. Do not blend the two recipes.
 These are the things where deviation produces silent failures or broken output. They are not taste, they are correctness. Memorize them.
 
 1. **Subtitles are applied LAST in the filter chain**, after every overlay. Otherwise overlays hide captions. Silent failure.
-2. **Per-segment extract → lossless `-c copy` concat**, not single-pass filtergraph. Otherwise you double-encode every segment when overlays are added.
-3. **30ms audio fades at every segment boundary** (`afade=t=in:st=0:d=0.03,afade=t=out:st={dur-0.03}:d=0.03`). Otherwise audible pops at every cut.
+2. **Per-segment extract, then join.** Hard-cut joins use lossless `-c copy` concat. Visual transitions use `xfade` on the *already-extracted* 1080p segments (`helpers/transitions.py`). Never pull original sources into one giant filtergraph with overlays — that double-encodes.
+3. **30ms audio fades at every hard-cut boundary** (`afade=t=in:st=0:d=0.03,afade=t=out:st={dur-0.03}:d=0.03`). Otherwise audible pops at every cut. `xfade` joins use `acrossfade` of the same duration instead of a hard audio cut.
 4. **Overlays use `setpts=PTS-STARTPTS+T/TB`** to shift the overlay's frame 0 to its window start. Otherwise you see the middle of the animation during the overlay window.
-5. **Master SRT uses output-timeline offsets**: `output_time = word.start - segment_start + segment_offset`. Otherwise captions misalign after segment concat.
+5. **Master SRT uses output-timeline offsets**: `output_time = word.start - segment_start + segment_offset`. `segment_offset` subtracts inbound xfade overlap. Otherwise captions misalign after segment concat.
 6. **Never cut inside a word.** Snap every cut edge to a word boundary from the word-level transcript.
 7. **Pad every cut edge.** Working window: 30–200ms. ASR timestamps drift 50–100ms — padding absorbs the drift. Tighter for fast-paced, looser for cinematic.
 8. **Word-level verbatim ASR only.** Never SRT/phrase mode (loses sub-second gap data). Never normalized fillers (loses editorial signal).
@@ -69,6 +69,7 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
     ├── master.srt               ← output-timeline subtitles
     ├── downloads/               ← yt-dlp outputs
     ├── verify/                  ← debug frames / timeline PNGs
+    ├── cover.jpg                ← Bilibili cover from skills/bili-cover
     ├── preview.mp4
     └── final.mp4
 ```
@@ -78,18 +79,21 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
 First-time install lives in `install.md` (clone, deps, ffmpeg, skill registration, API keys). Don't re-run it every session; on cold start just verify:
 
 - **Credential discovery (mandatory before asking the user):** the canonical key file is `<skill_root>/.env`, where `<skill_root>` is the parent directory of the actual helper after resolving its path — e.g. `Path(helpers/tts.py).resolve().parent.parent / ".env"`. Do **not** infer this from the current workspace, source-video directory, or a hard-coded `~/Developer/...` example. Then check `<cwd>/.env`, then exported environment variables. This is the exact lookup order used by `helpers/tts.py` and `helpers/transcribe.py`.
-- Run the check for the relevant key names (`ELEVENLABS_API_KEY`, `MIMO_API_KEY`, `FISH_API_KEY`, `PARAFORMER_API_TOKEN`) with the helpers' parsing semantics: strip whitespace around the key name and value, accept quoted values, and treat an empty value as missing. Do not use a strict `^KEY=` regex, because a valid `.env` may contain spaces around `=`. Never print a key or its prefix in tool output.
+- Run the check for the relevant key names (`ELEVENLABS_API_KEY`, `MIMO_API_KEY`, `FISH_API_KEY`, `PARAFORMER_API_TOKEN`, `GCP_GEMINI_IMAGE_API_KEY`, `ARK_SEEDREAM_API_KEY`) with the helpers' parsing semantics: strip whitespace around the key name and value, accept quoted values, and treat an empty value as missing. Do not use a strict `^KEY=` regex, because a valid `.env` may contain spaces around `=`. Never print a key or its prefix in tool output.
 - `ELEVENLABS_API_KEY` resolves from that lookup — required for Scribe transcription (the default ASR) and ElevenLabs TTS. Ask the user only after the mandatory discovery check fails, then write a supplied key to `<skill_root>/.env` (never to the user's `<videos_dir>`).
 - `PARAFORMER_API_TOKEN` resolves using the same lookup — required only for `--provider paraformer`. Optional `PARAFORMER_API_URL` overrides the default `https://paraformer.ow2shit.top`. Ask the user only after the discovery check fails.
 - `FISH_API_KEY` resolves using the same lookup — required for the default Fish Audio TTS / voice cloning. Ask the user only after the discovery check fails.
 - `MIMO_API_KEY` resolves using the same lookup — required only when the user explicitly asks for MiMo TTS. If MiMo is not used, leave it unset.
 - `ffmpeg` + `ffprobe` on PATH.
 - Python deps installed (`uv sync` or `pip install -e .` inside the repo).
-- Node.js + npm available if the session needs HyperFrames or Remotion slots. HyperFrames currently requires Node.js 22+.
+- Node.js + npm available if the session needs HyperFrames, Remotion, or the `ark-seedream` cover backend. HyperFrames currently requires Node.js 22+; Seedream needs Node 18+.
 - `yt-dlp`, HyperFrames, Remotion, Manim installed only on first use.
 - First-use animation setup happens inside the slot directory, never at the video-use repo root. HyperFrames can be invoked with `npx --yes hyperframes ...`; Remotion can be scaffolded with `npx create-video@latest` or installed as a project-local dependency before using its `remotion render` command.
 - This skill vendors `skills/manim-video/`. Read its SKILL.md when building a Manim slot.
-- Bilibili product promo is part of this skill (not a nested skill). When that mode is active, follow §Bilibili product promo.
+- This skill vendors `skills/bili-cover/`. When delivering a Bilibili cover, read `skills/bili-cover/SKILL.md` (do not improvise the cover recipe here).
+- `GCP_GEMINI_IMAGE_API_KEY` resolves from that lookup — required for the `gcp-gemini` cover backend. Optional `GCP_GEMINI_IMAGE_MODEL` / `GCP_GEMINI_IMAGE_API_ENDPOINT` / `GCP_GEMINI_IMAGE_SIZE` override model, host, and `imageSize`.
+- `ARK_SEEDREAM_API_KEY` resolves from that lookup — required for the `ark-seedream` cover backend. Optional `ARK_SEEDREAM_MODEL` / `ARK_SEEDREAM_API_BASE_URL` override model and Ark base URL.
+- Bilibili product promo is part of this skill (not a nested skill). When that mode is active, follow §Bilibili product promo. Cover stills follow `skills/bili-cover/`.
 
 Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this SKILL.md. Resolve their paths relative to the directory containing this file — the skill is typically symlinked at `~/.claude/skills/video-use/` or `~/.codex/skills/video-use/`.
 
@@ -99,7 +103,8 @@ Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this
 - **`transcribe_batch.py <videos_dir>`** — 4-worker parallel transcription. Same `--provider` and `--audio-track` flags. Use for multi-take.
 - **`pack_transcripts.py --edit-dir <dir>`** — `transcripts/*.json` → `takes_packed.md` (phrase-level, break on silence ≥ 0.5s).
 - **`timeline_view.py <video> <start> <end>`** — filmstrip + waveform PNG. On-demand visual drill-down. **Not a scan tool** — use it at decision points, not constantly.
-- **`render.py <edl.json> -o <out>`** — per-segment extract → concat → overlays (PTS-shifted) → subtitles LAST. `--preview` for 720p fast. `--build-subtitles` to generate master.srt inline. Default output fps matches the first source (`--fps 30` or `--fps 30000/1001` to force). Portrait detection honors display-matrix rotation so phone footage scaled on the right axis.
+- **`render.py <edl.json> -o <out>`** — per-segment extract → join (lossless concat or xfade) → overlays (PTS-shifted) → subtitles LAST. `--preview` for 720p fast. `--build-subtitles` to generate master.srt inline. Default output fps matches the first source (`--fps 30` or `--fps 30000/1001` to force). Portrait detection honors display-matrix rotation so phone footage scaled on the right axis.
+- **`transitions.py <clips...> -o <out>`** — join already-rendered clips with visual transitions. Default `--type fade --duration 0.4`. Per-join: `--joins fade:0.4,cut,fadeblack:0.5`. `--an` when a later mix pass replaces audio (Bilibili promo). Default `--keep-duration` pads each outgoing clip by the xfade so the programme length stays aligned with an already-authored TTS/SRT; `--no-keep-duration` lets overlaps shorten the output. Hard-cut-only runs stay lossless `-c copy`.
 - **`tts.py <text> -o <out>`** — text-to-speech for adding voiceover/narration. `--provider fish|mimo|elevenlabs` (default **fish**). Fish Audio creates a reusable private clone from `--reference-audio` or reuses `--fish-voice-id`. MiMo is opt-in for preset voices, voice design, or short-sample cloning. `--style` is MiMo-only. Outputs wav/mp3 ready to mix with ffmpeg.
 - **`grade.py <in> -o <out>`** — ffmpeg filter chain grade. Presets + `--filter '<raw>'` for custom.
 - **`bilibili_src.py <cmd>`** — Bilibili stock-source helper (good for ACG/anime/game OST and short clips). `search "<kw>" --n 5` lists candidates (bvid/title/UP主/duration); `check-watermark <BVid>` heuristically detects a burned-in watermark by checking edge detail in all four corners against the center — **run it BEFORE using any Bilibili-sourced VIDEO as stock; a watermark hit means discard that clip** (videos from YouTube/other platforms are NOT subject to this check); `download <BVid> --audio-out/--video-out [--force] [--cookies-from-browser <browser>]` pulls audio (BGM, no watermark concern) or video via yt-dlp. Video formats need a logged-in cookie (see below). This check is heuristic; visually spot-check any borderline or business-critical result.
@@ -371,7 +376,10 @@ Match the source unless the user asked for something specific. Common targets: `
     {"source": "C0103", "start": 2.42, "end": 6.85,
      "beat": "HOOK", "quote": "...", "reason": "Cleanest delivery, stops before slip at 38.46."},
     {"source": "C0108", "start": 14.30, "end": 28.90,
-     "beat": "SOLUTION", "quote": "...", "reason": "Only take without the false start."}
+     "beat": "SOLUTION", "quote": "...", "reason": "Only take without the false start."},
+    {"source": "BROLL", "start": 3.00, "end": 7.00,
+     "beat": "EXAMPLE", "reason": "Inserted footage — dissolve in.",
+     "transition": {"type": "fade", "duration": 0.4}}
   ],
   "grade": "warm_cinematic",
   "overlays": [
@@ -384,6 +392,10 @@ Match the source unless the user asked for something specific. Common targets: `
 ```
 
 `grade` is a preset name or raw ffmpeg filter. `overlays` are rendered animation clips. `subtitles` is optional and applied LAST. `subtitle_style` is an optional libass `force_style` string; use it when a specialized workflow requires a fixed caption treatment.
+
+**Transitions.** Omitted `transition` on a range is a hard cut, unless `default_transition` (or top-level `transition`) is set. The first range never has an inbound join. `"transition": "cut"` opts one join out of a default dissolve. Types are ffmpeg `xfade` names: `fade` (cross-dissolve, default), `fadeblack`, `fadewhite`, `wipeleft` / `wiperight`, `slideleft` / `slideright`. Duration is seconds; keep it under half of either adjacent clip. Talking-head / same-camera cuts stay hard-cut. Inserted B-roll, product stills vs OP/ED, or any source-class change should dissolve unless the user asked for jump cuts.
+
+**Do not shift TTS captions to chase the dissolve.** Promo/TTS subtitles are locked to the final narration audio (Hard Rule 13). Naive xfade shortens the picture by the overlap, so later shots arrive early while the voice stays put. Default `--keep-duration` (EDL `transition_handles`, default true) adds that overlap as a freeze/tail on the outgoing clip so the dissolve *starts* at the original cut point and `total_duration_s` still equals the narration. Only use `--no-keep-duration` / `"transition_handles": false` when you intend to re-time or re-generate the voiceover to the shorter picture.
 
 ## Memory — `project.md`
 
@@ -409,9 +421,10 @@ Things that consistently fail regardless of style:
 - **Whisper SRT / phrase-level output.** Loses sub-second gap data. Always word-level verbatim JSON (`words` with start/end), whether from Scribe or Paraformer.
 - **Running Whisper locally on CPU.** Slow and it normalizes fillers. Use Scribe or Paraformer.
 - **Burning subtitles into base before compositing overlays.** Overlays hide them. (Hard Rule 1.)
-- **Single-pass filtergraph when you have overlays.** Double re-encodes. Use per-segment extract → concat.
+- **Single-pass filtergraph when you have overlays.** Double re-encodes. Use per-segment extract → concat or xfade-join of extracted clips.
 - **Linear animation easing.** Looks robotic. Always cubic.
 - **Hard audio cuts at segment boundaries.** Audible pops. (Hard Rule 3.)
+- **Hard-cutting between different source classes.** Product stills vs OP/ED/Trailer, or any inserted B-roll against the A-roll, need a dissolve (`fade` 0.3–0.5s) unless the user asked for jump cuts. Same-camera talking-head cuts stay hard-cut.
 - **Typing text centered on the partial string.** Text slides left as it grows.
 - **Sequential sub-agents for multiple animations.** Always parallel.
 - **Editing before confirming the strategy.** Never.
@@ -428,7 +441,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 禁止出现：云逛、口播、混剪、资讯、宣传片、广告、配方、提示词、BGM、字幕、封面。
 
-这些词只留在本技能的内部说明里，不得写进任何将要发布或给观众看的句子。送入 TTS、封面模型的提示词同样不得使用上述禁词。
+这些词只留在本技能的内部说明里，不得写进任何将要发布或给观众看的句子（含封面画面上要画出来的文案）。送入 TTS 的口播文案同样不得使用上述禁词。发给图像模型的**生成提示词可以用「封面」**等内部用语；禁词约束的是画面文字，不是生图 prompt。
 
 ### 输入参数
 
@@ -450,12 +463,12 @@ Numeric specs here are production standards, not taste. Override only when the u
 3. **检索设定**：在 <https://zh.moegirl.org.cn/> 查找产品相关动漫设定与梗，供文案使用。
 4. **撰写文案**：按 §文案规范 起草口播文案，并给出每段对应的画面/图片搭配方案。
 5. **确认方案**：把文案 + 素材搭配展示给用户，确认后再制作（文案是创作性产物，先确认避免返工）。若选择了动态视频，标明它服务的口播语义点与输出时间窗；若未选择，说明商品图如何独立完成节奏。不能只列 BGM 或下载链接。
-6. **合成视频**：按 §视频规格 制作画面。动态视频仅在其计划的语义点实际进入时间轴，不得作为与口播无关的固定装饰。
+6. **合成视频**：按 §视频规格 制作画面。动态视频仅在其计划的语义点实际进入时间轴，不得作为与口播无关的固定装饰。商品静图与穿插视频之间必须用 `helpers/transitions.py` 做画面转场，禁止 `-c copy` 硬切拼接。
 7. **TTS 配音**：按 §Voiceover / TTS 生成口播。
 8. **检索并下载 BGM**：按 §混音规范 从 **YouTube 或 Bilibili** 找到与产品/作品相关的现成 OST 或 BGM 并下载音频。禁止用 AI 或本地合成生成 BGM。
 9. **混音**：对无字幕的视觉成片运行 `python helpers/mix_ad_audio.py <visual.mp4> <narration.mp3> <bgm.mp3> -o <mixed.mp4>`。该 helper 固定执行人声 -13 LUFS、BGM -27 LUFS、BGM 首尾淡化、无自动闪避与防削波；不得再对 `mixed.mp4` 做整轨 loudnorm。
 10. **烧录字幕**：最后执行，按 §字幕规范。字幕必须烧录到 `mixed.mp4` 上；不得先烧字幕再混音，也不得在烧录后用 `render.py` 的默认整轨 loudnorm 覆盖分轨响度。
-11. **自检交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 §对外文本禁词 检查口播、字幕、标题、简介、封面文字和标签。最终交付是一个不可拆分的三件套：`final.mp4`、按 §B站标题交付规范生成的 **1 个** 标题、以及按 §B站封面交付规范生成的 **1 张** 封面和完整提示词；任何一项缺失均不得宣告任务完成。
+11. **自检交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 §对外文本禁词 检查口播、字幕、标题、简介、封面文字和标签。最终交付是一个不可拆分的三件套：`final.mp4`、按 §B站标题交付规范生成的 **1 个** 标题、以及按 `skills/bili-cover/SKILL.md` 生成的 **1 张** 封面和完整提示词；任何一项缺失均不得宣告任务完成。
 
 ### 图片素材规范
 
@@ -485,6 +498,11 @@ Numeric specs here are production standards, not taste. Override only when the u
     - 视频流 Cookie：命令加 `--cookies-from-browser <chrome|firefox|edge|safari|brave>`，yt-dlp 直接读本机已登录 B 站的浏览器 cookie（无需手动导出）；匿名则仅音频可用。
 - **叙事优先**：外部动态画面是可选素材，不是配方要求。优先让商品主图、效果图和详情图承担展示；仅在它能为“世界观建立、角色/设定承接、节奏重置”中的至少一项提供商品图做不到的价值时采用。选择镜头时，以自然口播停顿、角色名/设定词落点、或静态图信息展示结束后的呼吸点作为进入和离开位置；镜头停留以观众看清其功能为准，不设固定数量、时长或总占比。若没有自然落点，宁可不插入。
 - 若使用片段，它必须是真实编码进成片的动态画面，且与相邻商品图在色彩、方向与情绪上连贯；不得以“已下载”“仅作 BGM”或静态首帧替代，也不得为了满足镜头数量而重复同类画面。
+- **转场（硬性）**：商品静图与穿插的 OP/ED/Trailer 之间禁止硬切。默认交叉溶解 `fade` **0.4 秒**。先用 `stable_motion.py` / 裁切得到各片段，再：
+  ```bash
+  python helpers/transitions.py 静图1.mp4 穿插.mp4 静图2.mp4 -o edit/clips_visual/visual.mp4 --type fade --duration 0.4 --an
+  ```
+  `--an` 因为后续 `mix_ad_audio.py` 会替换音轨。默认 `--keep-duration`：交接段片尾补上 0.4 秒 handle，成片时长仍等于各镜头之和，口播和 `master.srt` **不要改时间戳**。只有打算按缩短后的画面重做 TTS 时才加 `--no-keep-duration`。同类静图之间可用更短的 `fade:0.25`，或按用户要求硬切（`--joins fade:0.25,cut,fade:0.4`）。走 EDL 时在后一段写 `"transition": {"type": "fade", "duration": 0.4}`，或设 `"default_transition"`。
 
 ### 文案规范（口播脚本）
 
@@ -559,43 +577,12 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 ### B站封面交付规范
 
-最终视频交付时，必须同时输出 **1 张** B站封面图和 **1 段本次实际使用的完整封面提示词**；封面是强制交付物。封面固定为 **16:9 横版**，优先使用实际商品图或用户提供的角色图作为前景主体，确保产品外观、颜色、材质与关键细节真实可辨。B站会同时使用 16:9 原图和由它裁出的 4:3 封面，因此商品、标题和关键细节必须落在画面正中的 4:3 安全区内。
-
-- **生图工具顺序（硬性）**：封面必须先用运行环境自带的图像生成。Grok 用 `image_gen` / `image_edit`；Codex 用 `$imagegen` 内置的 `image_gen`（不要默认改走 Codex 的 `scripts/image_gen.py` CLI）。仅当自带生图不可用、报错、或明确无法满足本规范（例如无法按参考图出图、无法锁定 16:9）时，才允许改用 Seedream。禁止把 Seedream 当作封面的默认或首选。用户明确点名 Seedream 时除外。
-- **画布比例与安全区分离（硬性）**：16:9 是最终交付文件的画布比例；4:3 只是其内部的居中安全区，绝不是模型应输出的画布比例。提示词必须先单独、明确地锁定“最终画布仅可为 16:9 宽屏，禁止 4:3、方形和竖图”，再描述安全区。生成后必须用 `sips -g pixelWidth -g pixelHeight <cover>` 或等效方式核验宽高比在 16:9 的 ±1% 内；不满足时不得上传或交付，必须以“修正最终画布为 16:9，保留安全区构图”重新生成。
-- **模型直出文字（硬性）**：封面中的所有文字、艺术字、描边、阴影和排版必须由图像模型在同一次生成中直接完成。**禁止**在模型生成后使用 FFmpeg、PIL、Photoshop、Canva 或任何其他方式添加、替换、修复或拼接文字／艺术字；可仅做不改变画面内容的文件格式或尺寸转换。模型未能逐字正确生成已确认文字时，必须重新生成封面，不得后期补字。
-- **4:3 安全区（硬性）**：在 16:9 画布上，安全区是水平居中、高度拉满的 4:3 矩形，约占画面宽度中间 75%（左右各约 12.5% 会被 4:3 裁掉）。商品主体、脸部、包装、主标题、副标题和关键卖点必须完整落在该矩形内；左右两侧只允许可裁切的空背景或极淡氛围，不得放文字或商品轮廓。
-- **构图**：商品必须是视觉主体，位于前景并占 **4:3 安全区** 约 45%–60%，清晰、大尺寸、有层次；标题不是独立贴片，而要与商品的颜色、轮廓、包装、光效或场景形成一体化构图。标题放在商品附近、仍在安全区内，可贴近商品侧边、由商品留白承接或被商品局部环绕，但不得遮挡商品脸部、主体或关键卖点，也不得贴到 16:9 左右边缘。
-- **背景克制（硬性）**：背景必须干净、简洁、低信息密度，只承担衬托商品与标题的作用。优先使用纯色／柔和渐变／极少量光晕或纹理；禁止堆叠舞台布景、密集装饰、过多粒子、复杂道具或与商品无关的视觉元素。商品与标题必须是 16:9 和 4:3 两种缩略图中的第一阅读层级。
-- **文字**：仅使用已确认的主标题和可选副标题，要求逐字准确；主标题通常为产品具体名或圈内昵称，控制在 4–10 字，副标题控制在 6–14 字。全部文字必须落在 4:3 安全区内。艺术字必须在网页缩略图中清晰可读，使用高亮文字搭配深色描边或阴影，禁止低对比度。
-- **风格**：背景与产品调性一致，可使用适量 ACG 氛围元素，例如星光、柔和发光或漫画质感；画面要有明确焦点，色彩饱满但不杂乱。
-- **限制**：无水印、无 Logo、无英文、无乱码、无多余文字、无无关主体、无畸形产品。
-
-**通用模型提示词模板：**
-
-```text
-生成一张用于 B站视频封面的高点击率图片。**最终输出画布必须是 16:9 宽屏（例如 1920×1080）；禁止生成 4:3、方形或竖图。** B站会把这张 16:9 原图再裁成 4:3；下文的 4:3 只表示画面内部安全区，不表示输出画布比例。商品、文字和关键细节必须全部落在画面正中的 4:3 安全区：水平居中、高度拉满、约占宽度中间 75%；左右各约 12.5% 只能是可裁切的空背景。
-
-主题：<视频主题/产品名>
-参考素材：<上传的产品图、角色图或人物图>。必须保留主体的真实外观、颜色、材质、关键细节与辨识度，不添加无关主体。
-
-构图：商品主体位于前景，并完整待在正中 4:3 安全区内，占该安全区约 45%–60%，清晰、大尺寸、有层次；背景采用干净、低信息密度的 <纯色/柔和渐变/极少量光晕>，只衬托商品与标题。商品与标题必须构成一个整体：让商品的色彩、轮廓或少量光效自然承接标题，标题不应像后贴的独立卡片；不得遮挡主体脸部、关键卖点和轮廓；不得把文字或商品轮廓放到左右将被裁掉的区域。
-
-文字：只出现以下文字，必须逐字准确，且全部放在正中 4:3 安全区内：
-“<主标题，4–10字>”
-“<可选副标题，6–14字>”
-文字、艺术字、描边、阴影与排版必须由图像模型在本次生成中直接完成，不得在生成后添加、修复、替换或拼接。文字采用醒目、立体、与整体色调协调的艺术字；主标题在网页缩略图中也清晰可读。高亮文字搭配深色描边或阴影，避免低对比度。
-
-风格：精致商业宣传图，视觉焦点明确，色彩饱满但不刺眼，适合 B站 16:9 与 4:3 两种列表缩略图。
-限制：无水印、无 Logo、无英文、无乱码、无多余文字、无夸张畸形主体、无杂乱背景、无密集装饰、无与商品无关的道具、无贴边文字、无贴边主体。
-```
-
-**封面交付格式：** `B站封面：<文件链接>`，随后附 `封面提示词：<本次填充完成的完整提示词>`。提示词必须保留用户产品、素材、文字和构图信息，不得只交付空白模板。
+最终视频交付时，必须同时输出 **1 张** B站封面图和 **1 段本次实际使用的完整封面提示词**；封面是强制交付物。完整规范、提示词模板、后端顺序（`native` → `gcp-gemini` → `ark-seedream`）和脚本调用见 **`skills/bili-cover/SKILL.md`**。写到 `<videos_dir>/edit/cover.jpg`。画面上的字仍受 §对外文本禁词约束；发给图像模型的生成提示词可以使用「封面」。
 
 ### 示例
 
 ```text
 使用 skill: video-use 任务：制作一个关于「明日香」手办的宣传广告视频，时长 <时长>。
-素材在 <素材文件夹> 文件夹中。参考声音用 <参考声音.mp3>，
+素材在 <素材文件夹> 中。参考声音用 <参考音频.mp3>，
 BGM 风格：电音。
 ```

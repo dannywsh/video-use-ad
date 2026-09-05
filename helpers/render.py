@@ -3,7 +3,8 @@
 Implements the HEURISTICS render pipeline in the correct order:
 
   1. Per-segment extract with color grade + 30ms audio fades baked in
-  2. Lossless -c copy concat into base.mp4
+  2. Join extracted segments: lossless -c copy concat for hard cuts,
+     xfade/acrossfade for EDL transitions (re-encode extracted clips only)
   3. If overlays or subtitles: single filter graph that overlays animations
      (with PTS shift so frame 0 lands at the overlay window start)
      and applies `subtitles` filter LAST → final.mp4
@@ -28,6 +29,11 @@ import subprocess
 import sys
 from fractions import Fraction
 from pathlib import Path
+
+_HELPERS = Path(__file__).resolve().parent
+if str(_HELPERS) not in sys.path:
+    sys.path.insert(0, str(_HELPERS))
+from transitions import edl_join_transitions, join_clips, output_timeline_offsets  # noqa: E402
 
 try:
     from grade import get_preset, auto_grade_for_clip  # same directory
@@ -306,9 +312,10 @@ def extract_all_segments(
     preview: bool,
     draft: bool = False,
     fps: str | None = None,
-) -> list[Path]:
+) -> tuple[list[Path], str]:
     """Extract every EDL range into edit_dir/clips_graded/seg_NN.mp4.
-    Returns the ordered list of segment paths.
+
+    Returns (ordered segment paths, output frame rate string).
 
     If the EDL `grade` is "auto", analyze each segment range with
     `auto_grade_for_clip` and apply a per-segment subtle correction.
@@ -362,29 +369,36 @@ def extract_all_segments(
         extract_segment(src_path, start, duration, seg_filter, out_path, preview=preview, draft=draft, rate=out_rate)
         seg_paths.append(out_path)
 
-    return seg_paths
+    return seg_paths, out_rate
 
 
 # -------- Lossless concat ----------------------------------------------------
 
 
-def concat_segments(segment_paths: list[Path], out_path: Path, edit_dir: Path) -> None:
-    """Lossless concat via the concat demuxer. No re-encode."""
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    concat_list = edit_dir / "_concat.txt"
-    concat_list.write_text("".join(f"file '{p.resolve()}'\n" for p in segment_paths))
-
-    cmd = [
-        "ffmpeg", "-y",
-        "-f", "concat", "-safe", "0",
-        "-i", str(concat_list),
-        "-c", "copy",
-        "-movflags", "+faststart",
-        str(out_path),
-    ]
-    print(f"concat → {out_path.name}")
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    concat_list.unlink(missing_ok=True)
+def concat_segments(
+    segment_paths: list[Path],
+    out_path: Path,
+    edit_dir: Path,
+    edl: dict | None = None,
+    preview: bool = False,
+    draft: bool = False,
+    fps: str | None = None,
+) -> None:
+    """Join extracted segments. Hard cuts stay lossless; xfade joins re-encode."""
+    joins = edl_join_transitions(edl) if edl else [None] * len(segment_paths)
+    keep_duration = True
+    if edl is not None and "transition_handles" in edl:
+        keep_duration = bool(edl["transition_handles"])
+    join_clips(
+        segment_paths,
+        joins,
+        out_path,
+        concat_list=edit_dir / "_concat.txt",
+        fps=fps or "30",
+        preview=preview,
+        draft=draft,
+        keep_duration=keep_duration,
+    )
 
 
 # -------- Master SRT (Rule 5) ------------------------------------------------
@@ -424,21 +438,20 @@ def build_master_srt(edl: dict, edit_dir: Path, out_path: Path) -> None:
     - Output times computed as word.start - segment_start + segment_offset
     """
     transcripts_dir = edit_dir / "transcripts"
-    sources = edl["sources"]
+    ranges = edl["ranges"]
+    offsets = output_timeline_offsets(ranges, edl_join_transitions(edl))
 
     entries: list[tuple[float, float, str]] = []
-    seg_offset = 0.0
 
-    for r in edl["ranges"]:
+    for i, r in enumerate(ranges):
         src_name = r["source"]
         seg_start = float(r["start"])
         seg_end = float(r["end"])
-        seg_duration = seg_end - seg_start
+        seg_offset = offsets[i]
 
         tr_path = transcripts_dir / f"{src_name}.json"
         if not tr_path.exists():
             print(f"  no transcript for {src_name}, skipping captions for this segment")
-            seg_offset += seg_duration
             continue
 
         transcript = json.loads(tr_path.read_text())
@@ -473,8 +486,6 @@ def build_master_srt(edl: dict, edit_dir: Path, out_path: Path) -> None:
             text = text.rstrip(",;:")
             text = text.upper()
             entries.append((out_start, out_end, text))
-
-        seg_offset += seg_duration
 
     # Sort and write as SRT
     entries.sort(key=lambda e: e[0])
@@ -724,7 +735,7 @@ def main() -> None:
     out_path = args.output.resolve()
 
     # 1. Extract per-segment (auto-grade per range if EDL grade is "auto")
-    segment_paths = extract_all_segments(
+    segment_paths, join_fps = extract_all_segments(
         edl, edit_dir, preview=args.preview, draft=args.draft, fps=args.fps
     )
 
@@ -736,7 +747,10 @@ def main() -> None:
     else:
         base_name = "base.mp4"
     base_path = edit_dir / base_name
-    concat_segments(segment_paths, base_path, edit_dir)
+    concat_segments(
+        segment_paths, base_path, edit_dir,
+        edl=edl, preview=args.preview, draft=args.draft, fps=join_fps,
+    )
 
     # 3. Subtitles: build if requested, resolve final path
     subs_path: Path | None = None

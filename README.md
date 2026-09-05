@@ -92,7 +92,7 @@ video-use-ad/
 │   ├── grade.py              # 渲染输出自检
 │   └── tts.py                # AI 配音（ElevenLabs + MiMo + Fish Audio）
 ├── static/               # 文档图片资源
-├── skills/               # 子技能（manim-video）
+├── skills/               # 子技能（manim-video、bili-cover）
 ├── pyproject.toml        # Python 依赖
 ├── .env.example          # API Key 模板
 └── poster.html           # 宣传页
