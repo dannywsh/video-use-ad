@@ -110,6 +110,7 @@ Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this
 - **`grade.py <in> -o <out>`** — ffmpeg filter chain grade. Presets + `--filter '<raw>'` for custom.
 - **`bilibili_src.py <cmd>`** — Bilibili stock-source helper (good for ACG/anime/game OST and short clips). `search "<kw>" --n 5` lists candidates (bvid/title/UP主/duration); `check-watermark <BVid>` heuristically detects a burned-in watermark by checking edge detail in all four corners against the center — **run it BEFORE using any Bilibili-sourced VIDEO as stock; a watermark hit means discard that clip** (videos from YouTube/other platforms are NOT subject to this check); `download <BVid> --audio-out/--video-out [--force] [--cookies-from-browser <browser>]` pulls audio (BGM, no watermark concern) or video via yt-dlp. Video formats need a logged-in cookie (see below). This check is heuristic; visually spot-check any borderline or business-critical result.
 - **Bilibili cookie acquisition:** pass `--cookies-from-browser <chrome|firefox|edge|safari|brave>`; yt-dlp reads the already-logged-in Bilibili cookie straight from the user's local browser (no manual export). Anonymous downloads are audio-only.
+- **`inventory_stills.py`** — list stills, draw a y-tick overview for tall infographics, and crop full-width windows the agent already chose. Does **not** auto-slice by 16:9 viewport, color gaps, or OCR. Crops pad both ends by default (prefer extra neighbors over clipped goods). `region` in crop JSON is for `stable_motion.py --region`. See §静图分拣.
 - **`stable_motion.py`** — jitter-free push/scroll of product stills. `--mode scroll` crawls at a fixed 0.18 screens/s; leftover shot time holds the last frame, and a too-tall still is cropped (`--anchor top|center|bottom`, `--region 0.12,0.45`, `--probe`). See §Bilibili product promo.
 - **`mix_ad_audio.py`** — locked promo mix (voice -13 LUFS, BGM -27 LUFS). Promo mode only.
 - **`build_tts_subtitles.py` / `verify_tts_subtitles.py` / `ad_subtitles.py`** — verbatim single-line Chinese captions for promo TTS. Promo mode only.
@@ -461,7 +462,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 ### 执行流程
 
-1. **清点素材（静图分拣在文案之前）**：`ffprobe` 检查视频素材。静图必须按 §静图分拣 跑 `inventory_stills.py`、看原图和长图切带、写入 `edit/stills_inventory.md`。先定上镜 / 只取信息 / 弃用，再写口播。文字多的图可以不上镜，但其中的重点信息仍可进口播和字幕。
+1. **清点素材（静图分拣在文案之前）**：`ffprobe` 检查视频素材。静图必须按 §静图分拣 跑 `inventory_stills.py`、看原图和长图 y 刻度总览、只对上镜栏目裁窗并看裁图、写入 `edit/stills_inventory.md`。先定上镜 / 只取信息 / 弃用，再写口播。文字多的图可以不上镜，但其中的重点信息仍可进口播和字幕。
 2. **评估并按需收集视频素材**：先依据静图分拣结果判断是否需要外部动态画面。它只能承担一个明确任务：建立作品世界观、在角色/设定转换时提供承接，或在连续静态画面后重置节奏；若没有能完成该任务的官方镜头，或它会遮蔽商品细节，就不使用。相关动漫、游戏的官方 OP / ED / Trailer 可从 **YouTube 或 Bilibili** 下载，两个来源平级：YouTube 用 `yt-dlp` 检索并下载视频；Bilibili 先用 `python helpers/bilibili_src.py search "<关键词>" --n 5` 找到 BV 号，再运行 `python helpers/bilibili_src.py check-watermark <BVid>`，未命中水印后必须用 `python helpers/bilibili_src.py download <BVid> --video-out <输出路径>` 下载**视频画面**（需要时加 `--cookies-from-browser <browser>`），而非只下载音频。仅当素材来自 Bilibili 时需要该水印检查；YouTube/其他平台来源的视频无需水印检测。若选择视频，记录其来源、源时间码、计划插入的口播语义点；成片输出时间窗等第 6 步转写后再填，不为凑数量下载或插入。
 3. **检索设定**：在 <https://zh.moegirl.org.cn/> 查找产品相关动漫设定与梗，供文案使用。
 4. **撰写文案**：按 §文案规范 起草口播文案。上镜镜头对应保留窗口；密字图里抽出的重点写进口播（字幕随口播），画面改用其他上镜素材。判定为弃用的条目两端都不进。
@@ -475,12 +476,18 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 ### 静图分拣（硬性）
 
-长图会出现在很多素材里（商品详情、规格分栏、活动海报、KV 等）。先看画面适不适合上镜，再看文字里有没有口播需要的重点；不要按某一次任务的题材套公式。
+长图会出现在很多素材里（商品详情、规格分栏、活动海报、KV 等）。先看画面适不适合上镜，再看文字里有没有口播需要的重点。下面的切窗流程对所有长图通用；**哪一类算镜头、哪一类只进口播**，按素材类型用后面的题材约束，不要拿某一次任务的栏目名去套所有图。
 
-1. 切带：`python helpers/inventory_stills.py "<素材文件夹>" --bands-dir "<videos_dir>/edit/verify/stills"`。JSON 里 `tall: true` 的图会按约一屏高度切出重叠 JPEG，`region` 可直接给 `stable_motion.py --region`。3:4 KV、方图、横图不切带，直接看原图。
-2. **必须看图**：每张静图都要打开原文件；长图还要按顺序看切带。禁止只凭文件名决定去留。
-3. 读到的标题可用 `python helpers/inventory_stills.py --suggest-role "<可见标题>"` 做核对，助手建议不是终裁。
-4. 写入 `<videos_dir>/edit/stills_inventory.md` 后再写文案。表格至少包含：文件、判定、可见内容、用法（上镜的 `--region`，或「不进画面 + 口播要点」，或「两端都不用」）。
+#### 长图提取关键信息
+
+目标是找出**能当镜头的栏目**：一段栏目标题，加上它解释的那块画面（产品图、参数卡、卖点图等）。不是把长图切成等高条。禁止用 16:9 视窗等分、颜色空隙、OCR 禁切线自动切片——那些会切断标题与画面，或把密字表切成假镜头。
+
+1. **出总览**：`python helpers/inventory_stills.py "<素材文件夹>" --overview-dir "<videos_dir>/edit/verify/overview"`。`tall: true` 的图写出 `{stem}_overview.jpg`（瘦长缩略，每 200px 标原图 y）。3:4 KV、方图、横图不画总览，直接看原图。
+2. **整张分拣**：打开每张原图；长图对照总览看栏。禁止只凭文件名决定去留。先定整张是上镜 / 只取信息 / 弃用，再决定要不要往下裁窗。
+3. **只对上镜长图定窗**：在总览上按栏目估 `y0–y1`。一窗 = 一个信息单元（标题 + 该栏的完整画面），整宽只裁上下。不要为了凑 16:9 去切。总览估 y 会有误差，**宁可多带一点相邻栏目，也不要把本栏切残**。套装、对比、多件展示要把这一栏里的主体都框进去，不要为了画面干净而裁短。
+4. **裁窗并看图补全**：`python helpers/inventory_stills.py --crop --folder "<素材文件夹>" --out-dir "<videos_dir>/edit/verify/stills" --window <name>,<source>,<y0>,<y1>`（可重复 `--window`；默认上下各扩 80px）。必须打开每张裁图：本栏主体（图、关键数字、名称）被切掉就**加大窗口再裁**。边上带进下一栏可以留着，禁止为了「收干净」往里收。JSON 里的 `region` 给 `stable_motion.py --region`。
+5. 读到的标题可用 `python helpers/inventory_stills.py --suggest-role "<可见标题>"` 做核对。这是标题用词提示，不是终裁；商品详情以看图为准。
+6. 写入 `<videos_dir>/edit/stills_inventory.md` 后再写文案。表格至少包含：文件、判定、可见内容、用法（上镜写裁图路径和 `--region`，或「不进画面 + 口播要点」，或「两端都不用」）。
 
 | 判定 | 何时 | 处理 |
 |------|------|------|
@@ -489,6 +496,11 @@ Numeric specs here are production standards, not taste. Override only when the u
 | 弃用 | 没有可讲重点，或与主题无关 | 不进画面、不入口播、不进封面 |
 
 密字图默认按「只取信息」或「弃用」处理，不要为了保留字而把整张密字图滚进成片。有可讲画面时才上镜。口播时长由用户提示词决定，**不要为了滚完整张长图而拉长 TTS**。先 `--probe` 再渲染。
+
+**题材约束（在通用流程上收紧，不另走一套切法）**
+
+- **普通商品详情**（手办参数、食品配料、规格表、使用说明等）：上镜优先外观、场景、卖点插图，以及字少、图大的规格块。配料表、营养成分、密集参数、注意事项小字默认「只取信息」——数字可以进口播，不要当镜头硬滚。一窗对应一个卖点或一块仍看得清的规格图，不要把整页说明书裁成一条。
+- **漫展 / 展览活动长图**（海报、场贩、票种、嘉宾日程等）：上镜优先主视觉 KV、嘉宾/舞台海报、场贩商品卡、票价、礼包套装；礼包要把每一件实物和价格都框进同一窗。当日版权/IP 密表「只取信息」。购票须知、退票换票、交通路线、展商格子名录默认不上镜（无画面价值则「弃用」）。
 
 ### 图片素材规范
 
