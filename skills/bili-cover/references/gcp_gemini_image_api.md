@@ -116,4 +116,4 @@ python skills/bili-cover/scripts/gcp_gemini_image.py \
 
 Repeat `--reference-image` for multiple stills. `--print-request` writes the JSON body (base64 truncated) to stdout and does not call the API.
 
-Env lookup matches parent TTS: skill-root `.env` → cwd `.env` → process environment.
+Env lookup matches parent TTS: user-config `.env` (`~/.config/video-use/.env`, Windows `%USERPROFILE%\.config\video-use\.env`) → leftover skill-root `.env` → cwd `.env` → process environment.

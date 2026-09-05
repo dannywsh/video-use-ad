@@ -7,14 +7,15 @@ import argparse
 import base64
 import json
 import mimetypes
-import os
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-SKILL_ROOT_ENV = Path(__file__).resolve().parent.parent.parent.parent / ".env"
-CWD_ENV = Path.cwd() / ".env"
+_HELPERS = Path(__file__).resolve().parents[3] / "helpers"
+if str(_HELPERS) not in sys.path:
+    sys.path.insert(0, str(_HELPERS))
+from env_file import load_env_value  # noqa: E402
 
 DEFAULT_ENDPOINT = "aiplatform.googleapis.com"
 DEFAULT_MODEL = "gemini-3.1-flash-lite-image"
@@ -42,28 +43,6 @@ IMAGE_HARM_CATEGORIES = (
     "HARM_CATEGORY_IMAGE_HARASSMENT",
     "HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT",
 )
-
-
-def parse_env_file(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not path.exists():
-        return values
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip().strip('"').strip("'")
-    return values
-
-
-def load_env_value(name: str, default: str = "") -> str:
-    for candidate in (SKILL_ROOT_ENV, CWD_ENV):
-        parsed = parse_env_file(candidate)
-        value = parsed.get(name, "").strip()
-        if value:
-            return value
-    return os.environ.get(name, "").strip() or default
 
 
 def load_image_part(path: Path) -> dict:
