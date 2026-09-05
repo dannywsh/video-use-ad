@@ -68,7 +68,8 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
     ├── voiceover/               ← TTS audio (tts.py output)
     ├── master.srt               ← output-timeline subtitles
     ├── downloads/               ← yt-dlp outputs
-    ├── verify/                  ← debug frames / timeline PNGs
+    ├── verify/                  ← debug frames / timeline PNGs / still bands
+    ├── stills_inventory.md      ← promo stills: on-screen / voice-only facts / unused
     ├── cover.jpg                ← Bilibili cover from skills/bili-cover
     ├── preview.mp4
     └── final.mp4
@@ -109,7 +110,7 @@ Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this
 - **`grade.py <in> -o <out>`** — ffmpeg filter chain grade. Presets + `--filter '<raw>'` for custom.
 - **`bilibili_src.py <cmd>`** — Bilibili stock-source helper (good for ACG/anime/game OST and short clips). `search "<kw>" --n 5` lists candidates (bvid/title/UP主/duration); `check-watermark <BVid>` heuristically detects a burned-in watermark by checking edge detail in all four corners against the center — **run it BEFORE using any Bilibili-sourced VIDEO as stock; a watermark hit means discard that clip** (videos from YouTube/other platforms are NOT subject to this check); `download <BVid> --audio-out/--video-out [--force] [--cookies-from-browser <browser>]` pulls audio (BGM, no watermark concern) or video via yt-dlp. Video formats need a logged-in cookie (see below). This check is heuristic; visually spot-check any borderline or business-critical result.
 - **Bilibili cookie acquisition:** pass `--cookies-from-browser <chrome|firefox|edge|safari|brave>`; yt-dlp reads the already-logged-in Bilibili cookie straight from the user's local browser (no manual export). Anonymous downloads are audio-only.
-- **`stable_motion.py`** — jitter-free push/scroll of product stills for Bilibili promo. See §Bilibili product promo.
+- **`stable_motion.py`** — jitter-free push/scroll of product stills. `--mode scroll` crawls at a fixed 0.18 screens/s; leftover shot time holds the last frame, and a too-tall still is cropped (`--anchor top|center|bottom`, `--region 0.12,0.45`, `--probe`). See §Bilibili product promo.
 - **`mix_ad_audio.py`** — locked promo mix (voice -13 LUFS, BGM -27 LUFS). Promo mode only.
 - **`build_tts_subtitles.py` / `verify_tts_subtitles.py` / `ad_subtitles.py`** — verbatim single-line Chinese captions for promo TTS. Promo mode only.
 
@@ -430,6 +431,8 @@ Things that consistently fail regardless of style:
 - **Editing before confirming the strategy.** Never.
 - **Re-transcribing cached sources.** Immutable outputs of immutable inputs.
 - **Assuming what kind of video it is.** Look first, ask second, edit last.
+- **Dropping the facts with the graphic.** A text-heavy still can stay off-screen. If it holds useful facts, say them in the voiceover (captions follow the voice). Do not show a wall of unreadably small type just because the facts are on it.
+- **Racing a whole tall infographic in one short shot.** If it is going on screen, slice by section and pair each window with one spoken beat.
 
 ## Bilibili product promo (hard recipe)
 
@@ -458,34 +461,53 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 ### 执行流程
 
-1. **清点素材**：`ffprobe` 检查视频素材，列出素材文件夹全部图片，按"商品主图 / 效果图 / 详情图"分类，剔除文字过多的图片。
-2. **评估并按需收集视频素材**：先依据文案和商品图判断是否需要外部动态画面。它只能承担一个明确任务：建立作品世界观、在角色/设定转换时提供承接，或在连续静态画面后重置节奏；若没有能完成该任务的官方镜头，或它会遮蔽商品细节，就不使用。相关动漫、游戏的官方 OP / ED / Trailer 可从 **YouTube 或 Bilibili** 下载，两个来源平级：YouTube 用 `yt-dlp` 检索并下载视频；Bilibili 先用 `python helpers/bilibili_src.py search "<关键词>" --n 5` 找到 BV 号，再运行 `python helpers/bilibili_src.py check-watermark <BVid>`，未命中水印后必须用 `python helpers/bilibili_src.py download <BVid> --video-out <输出路径>` 下载**视频画面**（需要时加 `--cookies-from-browser <browser>`），而非只下载音频。仅当素材来自 Bilibili 时需要该水印检查；YouTube/其他平台来源的视频无需水印检测。若选择视频，记录其来源、源时间码、计划插入的口播语义点与输出时间窗；不为凑数量下载或插入。
+1. **清点素材（静图分拣在文案之前）**：`ffprobe` 检查视频素材。静图必须按 §静图分拣 跑 `inventory_stills.py`、看原图和长图切带、写入 `edit/stills_inventory.md`。先定上镜 / 只取信息 / 弃用，再写口播。文字多的图可以不上镜，但其中的重点信息仍可进口播和字幕。
+2. **评估并按需收集视频素材**：先依据静图分拣结果判断是否需要外部动态画面。它只能承担一个明确任务：建立作品世界观、在角色/设定转换时提供承接，或在连续静态画面后重置节奏；若没有能完成该任务的官方镜头，或它会遮蔽商品细节，就不使用。相关动漫、游戏的官方 OP / ED / Trailer 可从 **YouTube 或 Bilibili** 下载，两个来源平级：YouTube 用 `yt-dlp` 检索并下载视频；Bilibili 先用 `python helpers/bilibili_src.py search "<关键词>" --n 5` 找到 BV 号，再运行 `python helpers/bilibili_src.py check-watermark <BVid>`，未命中水印后必须用 `python helpers/bilibili_src.py download <BVid> --video-out <输出路径>` 下载**视频画面**（需要时加 `--cookies-from-browser <browser>`），而非只下载音频。仅当素材来自 Bilibili 时需要该水印检查；YouTube/其他平台来源的视频无需水印检测。若选择视频，记录其来源、源时间码、计划插入的口播语义点；成片输出时间窗等第 6 步转写后再填，不为凑数量下载或插入。
 3. **检索设定**：在 <https://zh.moegirl.org.cn/> 查找产品相关动漫设定与梗，供文案使用。
-4. **撰写文案**：按 §文案规范 起草口播文案，并给出每段对应的画面/图片搭配方案。
-5. **确认方案**：把文案 + 素材搭配展示给用户，确认后再制作（文案是创作性产物，先确认避免返工）。若选择了动态视频，标明它服务的口播语义点与输出时间窗；若未选择，说明商品图如何独立完成节奏。不能只列 BGM 或下载链接。
-6. **合成视频**：按 §视频规格 制作画面。动态视频仅在其计划的语义点实际进入时间轴，不得作为与口播无关的固定装饰。商品静图与穿插视频之间必须用 `helpers/transitions.py` 做画面转场，禁止 `-c copy` 硬切拼接。
-7. **TTS 配音**：按 §Voiceover / TTS 生成口播。
+4. **撰写文案**：按 §文案规范 起草口播文案。上镜镜头对应保留窗口；密字图里抽出的重点写进口播（字幕随口播），画面改用其他上镜素材。判定为弃用的条目两端都不进。
+5. **确认方案**：把文案 + 素材搭配展示给用户，确认后再制作（文案是创作性产物，先确认避免返工）。必须附上静图分拣表（上镜 / 只取信息 / 弃用，含理由）；上镜的长图写出 `--region`。搭配只钉「哪句对哪张图 / 哪一窗」，不要把估出来的秒数当成最终镜头时长。若选择了动态视频，标明它服务的口播语义点；输出时间窗等 TTS 转写后再填。若未选择，说明商品图如何独立完成节奏。不能只列 BGM 或下载链接。
+6. **TTS 配音（画面之前）**：按 §Voiceover / TTS 生成**整段**口播，不要按句多次合成。立刻 `python helpers/transcribe.py <口播音频> --edit-dir <edit> --provider paraformer`。用这份词级转写，把确认方案里的每一句口播映射到时间窗：镜头 `i` 从该句第一个字的 `start` 起，到下一句第一个字的 `start` 止（最后一句到音频结尾）。句间停顿并入当前镜头，使各镜 `--duration` 之和等于口播 `ffprobe` 时长。禁止用手估秒数渲画面。后续字幕复用这份转写缓存，音频未改不得重跑。
+7. **合成视频**：按上一步的时间窗渲染画面（`stable_motion.py --duration`、OP/ED 裁切都用该窗）。动态视频仅在其计划的语义点实际进入时间轴，不得作为与口播无关的固定装饰。商品静图与穿插视频之间必须用 `helpers/transitions.py` 做画面转场，禁止 `-c copy` 硬切拼接。转场默认 `--keep-duration`，画面总长必须仍等于口播时长。
 8. **检索并下载 BGM**：按 §混音规范 从 **YouTube 或 Bilibili** 找到与产品/作品相关的现成 OST 或 BGM 并下载音频。禁止用 AI 或本地合成生成 BGM。
-9. **混音**：对无字幕的视觉成片运行 `python helpers/mix_ad_audio.py <visual.mp4> <narration.mp3> <bgm.mp3> -o <mixed.mp4>`。该 helper 固定执行人声 -13 LUFS、BGM -27 LUFS、BGM 首尾淡化、无自动闪避与防削波；不得再对 `mixed.mp4` 做整轨 loudnorm。
+9. **混音**：对无字幕的视觉成片运行 `python helpers/mix_ad_audio.py <visual.mp4> <narration.mp3> <bgm.mp3> -o <mixed.mp4>`。该 helper 固定执行人声 -13 LUFS、BGM -27 LUFS、BGM 首尾淡化、无自动闪避与防削波；不得再对 `mixed.mp4` 做整轨 loudnorm。混音长度跟画面走，故画面必须先对齐口播，否则人声会被裁切。
 10. **烧录字幕**：最后执行，按 §字幕规范。字幕必须烧录到 `mixed.mp4` 上；不得先烧字幕再混音，也不得在烧录后用 `render.py` 的默认整轨 loudnorm 覆盖分轨响度。
-11. **自检交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 §对外文本禁词 检查口播、字幕、标题、简介、封面文字和标签。最终交付是一个不可拆分的三件套：`final.mp4`、按 §B站标题交付规范生成的 **1 个** 标题、以及按 `skills/bili-cover/SKILL.md` 生成的 **1 张** 封面和完整提示词；任何一项缺失均不得宣告任务完成。
+11. **自检交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；`ffprobe` 对照画面与口播时长（允许转场取整误差，不得差出一整句）。若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 §对外文本禁词 检查口播、字幕、标题、简介、封面文字和标签。最终交付是一个不可拆分的三件套：`final.mp4`、按 §B站标题交付规范生成的 **1 个** 标题、以及按 `skills/bili-cover/SKILL.md` 生成的 **1 张** 封面和完整提示词；任何一项缺失均不得宣告任务完成。
+
+### 静图分拣（硬性）
+
+长图会出现在很多素材里（商品详情、规格分栏、活动海报、KV 等）。先看画面适不适合上镜，再看文字里有没有口播需要的重点；不要按某一次任务的题材套公式。
+
+1. 切带：`python helpers/inventory_stills.py "<素材文件夹>" --bands-dir "<videos_dir>/edit/verify/stills"`。JSON 里 `tall: true` 的图会按约一屏高度切出重叠 JPEG，`region` 可直接给 `stable_motion.py --region`。3:4 KV、方图、横图不切带，直接看原图。
+2. **必须看图**：每张静图都要打开原文件；长图还要按顺序看切带。禁止只凭文件名决定去留。
+3. 读到的标题可用 `python helpers/inventory_stills.py --suggest-role "<可见标题>"` 做核对，助手建议不是终裁。
+4. 写入 `<videos_dir>/edit/stills_inventory.md` 后再写文案。表格至少包含：文件、判定、可见内容、用法（上镜的 `--region`，或「不进画面 + 口播要点」，或「两端都不用」）。
+
+| 判定 | 何时 | 处理 |
+|------|------|------|
+| 上镜 | 画面清楚、好看，观众看得清 | 主视觉用 `--mode push`。长图按栏/标题语义切窗，一句口播对一窗 |
+| 只取信息 | 文字过密、不适合当镜头，但里面有口播需要的重点 | **图不上镜**。把重点写进口播，字幕跟口播走；该句画面用其他上镜素材顶上 |
+| 弃用 | 没有可讲重点，或与主题无关 | 不进画面、不入口播、不进封面 |
+
+密字图默认按「只取信息」或「弃用」处理，不要为了保留字而把整张密字图滚进成片。有可讲画面时才上镜。口播时长由用户提示词决定，**不要为了滚完整张长图而拉长 TTS**。先 `--probe` 再渲染。
 
 ### 图片素材规范
 
-- **选图优先级**：商品本体图为主，尽量多使用主图；少量商品详情图；**尽量不使用文字过多的图片**。
+- **选图优先级**：商品本体图为主，尽量多使用主图；少量仍清楚可读的详情图。信息长图能看清再切窗上镜；文字过密则不上镜。
+- **文字过密**：默认不上镜。先判断里面有没有口播需要的重点——有则写进口播和字幕，画面换别的图；没有可讲重点才整张丢掉。不要把密字图滚进成片充数。
 - **画面适配**（每张图进入 1920×1080 画布时）：
   - 图片高度不足画布高度 → **等比例放大**，占满画面高度（允许裁切左右）。
-  - 图片高度大于画布 → **缓慢滚动播放**（垂直匀速滚动），不要瞬间跳切。
-- 文案与图片内容尽量匹配：讲到哪张图就展示哪张图。
+  - 图片比 16:9 更高：3:4 / 方图主视觉用 `--mode push`；详情/信息长图用 `--mode scroll`。滚动是 **固定 0.18 屏/秒**（约 5.5 秒一屏），与图有多长、镜头有几秒无关：只改变滚多久或裁多长，禁止为某张图改 `--max-viewports-per-sec`。不要用 duration 去「拉满」或「刷完整张」。镜头比内容长就停在末帧；镜头比内容短就从 `--anchor`（默认顶）裁一段可读窗口。口播对中段/底部时用 `--region 0.35,0.7` 或 `--anchor center|bottom`。先 `--probe` 看 JSON 再渲染。
+- 文案与上镜画面尽量匹配：讲到哪张上镜的图、哪一段长图，就展示哪一段。只取信息、不上镜的句子，用其他上镜素材垫画面。
+- **镜头时长**：`--duration` 必须用 §执行流程 第 6 步从口播转写算出的时间窗，禁止手估或按图有多长反推。滚动速度仍固定 0.18 屏/秒，不因某句变长而加速刷完整张。
 
 #### 动态图片分镜稳定性
 
 - 商品主图可采用缓慢中心推镜，详情长图可采用缓慢纵向滚动；背景、清晰前景和暗角先各生成一次静态资产，再由同一条视频滤镜链驱动运动。不得为每一帧重新生成背景或前景位图。
-- **运动参数必须连续**：缩放倍率和滚动位置以输出帧编号计算同一条 0–1 平滑曲线（例如 smoothstep），并在滤镜中以浮点表达式执行。禁止在逐帧循环中对缩放后的宽高、居中坐标或裁切坐标使用 `int()` / `//` 后再渲染；这会产生“停一帧、跳一像素”的抖动。
+- **运动参数必须连续**：推镜缩放以输出帧编号计算同一条连续曲线，并在滤镜中以浮点表达式执行。长图滚动必须对时间 `t` **匀速**（固定像素/秒），滚完用 `min()` 停在末帧；禁止用 `n/(frames-1)` 把整段行程摊满镜头时长，那会让短窗口几乎不动、长窗口被拉成不同速度。禁止在逐帧循环中对缩放后的宽高、居中坐标或裁切坐标使用 `int()` / `//` 后再渲染；这会产生“停一帧、跳一像素”的抖动。
 - 缩放与滚动不能分别用不同的取整坐标系计算。长图滚动的可用纵向范围必须基于**当前帧**缩放后的图像高度计算；否则缩放变化会使裁切位置不连续。
 - 推荐用 FFmpeg `zoompan` 的 `on`（输出帧编号）驱动中心推镜，并让透明前景在模糊背景上合成；该方案避免 Python/PIL 按帧缩放带来的整数舍入抖动，也避免大量 PNG 序列写入造成的性能问题。
-- **统一实现**：商品静态图必须优先使用 `python helpers/stable_motion.py <图片> -o <片段.mp4> --mode push --duration <秒>`；详情长图使用 `--mode scroll`。该 helper 先只生成一次高分辨率合成画布，再由 `zoompan` 的 `on` 驱动中心推镜；滚动模式只在开始时缩放前景，再用一个连续的 `n` 表达式移动它。它**强制固定以 2× 输出画布渲染**并 Lanczos 下采样到交付分辨率，且不接受覆盖该值的参数，避免缓慢运动在 1080p 整数裁切时产生 0/1 像素台阶。禁止退回到逐帧 `scale` 加 `overlay` 的组合。
-- **调用示例**：`python helpers/stable_motion.py 主图.jpg -o edit/clips_visual/main.mp4 --mode push --duration 6`；`python helpers/stable_motion.py 商详.jpg -o edit/clips_visual/detail.mp4 --mode scroll --duration 7`。
+- **统一实现**：商品静态图必须优先使用 `python helpers/stable_motion.py <图片> -o <片段.mp4> --mode push --duration <秒>`；详情/信息长图使用 `--mode scroll`（固定 0.18 屏/秒；过长则裁窗，滚完停住，不要手写更快的 duration 去追完整张）。该 helper 先只生成一次高分辨率合成画布，再由 `zoompan` 的 `on` 驱动中心推镜；滚动模式只在开始时缩放前景，再用 `t` 的匀速表达式移动它。它**强制固定以 2× 输出画布渲染**并 Lanczos 下采样到交付分辨率，且不接受覆盖该值的参数，避免缓慢运动在 1080p 整数裁切时产生 0/1 像素台阶。禁止退回到逐帧 `scale` 加 `overlay` 的组合。
+- **调用示例**：`python helpers/stable_motion.py 主图.jpg -o edit/clips_visual/main.mp4 --mode push --duration 6`；`python helpers/stable_motion.py 商详.jpg -o edit/clips_visual/detail.mp4 --mode scroll --duration 7`；长图对顶部：`... --mode scroll --duration 7 --anchor top`；对中段：`--region 0.28,0.62`。`--probe` 只打印裁窗 JSON。
 - **自检**：动态图片分镜生成后，逐段以 1× 速度查看首段、中段、末段，并抽取连续 10 帧检查运动方向只前进、不回跳；发现抖动时必须修正运动表达式后重渲染，不得改用静态图规避问题。
 
 ### 视频素材规范
@@ -506,8 +528,8 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 ### 文案规范（口播脚本）
 
-- **体裁**：资讯类"云逛"口播——滚动播放资讯/商品图片，配合口播解说。
-- **风格**：多放动漫梗，引起 ACG 爱好者共鸣；结合素材文件夹中的效果图介绍产品；结合动漫设定展开（设定信息查 moegirl）。
+- **体裁**：资讯类"云逛"口播——滚动播放资讯/商品图片，配合口播解说。画面跟上镜素材走；密字图里抽出的重点可以只出现在口播和字幕里。
+- **风格**：多放动漫梗，引起 ACG 爱好者共鸣；结合素材文件夹中的效果图介绍产品；结合动漫设定展开（设定信息查 moegirl）。口播覆盖 `stills_inventory.md` 里「上镜」和「只取信息」的内容，不讲「弃用」条目。
 - **表达**：必须口语化，只讲这件商品；口播篇幅按用户给出的成片时长写，不自行改成别的长度；**禁止**出现逻辑总结类词语（如"总之""综上所述""最后总结一下"）；**禁止分点列条**。对外用词见 §对外文本禁词。
 - **数字**：金额、数量、尺寸、比例等量化信息一律用阿拉伯数字（如「199元」「2.0」「1/7」），禁止写成中文数字（如「一百九十九元」「二点零」）。口语虚词如「一个」「一下」保持汉字。送入 TTS 的文案和烧录字幕都必须保留分数线，禁止把「1/7」改成「17」或「1 7」。
 
@@ -543,7 +565,7 @@ Numeric specs here are production standards, not taste. Override only when the u
   python helpers/ad_subtitles.py <mixed.mp4> <master.srt> -o <final.mp4> --primary-colour <ASS颜色>
   ```
 
-  广告流程禁止对 TTS 成片使用 `render.py --build-subtitles`，该路径会采用 ASR 文本。`verify_tts_subtitles.py` 失败即禁止烧录（Hard Rule 13）。
+  口播转写在第 6 步已完成；音频未改则直接复用 `transcripts/` 缓存，禁止重跑。广告流程禁止对 TTS 成片使用 `render.py --build-subtitles`，该路径会采用 ASR 文本。`verify_tts_subtitles.py` 失败即禁止烧录（Hard Rule 13）。
 - **锁定样式（1080p 基准，按成片高度缩放）**：Hiragino Sans GB W6，`FontSize=72`，`Spacing=1`，`Outline=3`（四周细描边），`Shadow=0`，`WrapStyle=2`，`MarginV=8`，左右 `MarginL/R=64`。烧录时必须同时带上 `PlayResX=<视频宽>` 和 `PlayResY=<视频高>`；720p / 4K 由 helper 自动缩放，不要手填。Linux 或未安装冬青黑体时，只允许把 `FontName` 换成 `Noto Sans SC`。
 - **单行（硬性）**：每条字幕必须只有一行。`--max-chars 24` 按语义切分，超长子句由脚本硬切，禁止一条里出现换行。烧录用 `WrapStyle=2`，即使文本偏长也不许折成两行。
 - **颜色与对比度**：默认白色 `&H00FFFFFF`。若产品有指定高亮色，用 `--primary-colour` 覆盖，必须仍是高亮度浅色；禁止低亮度或接近画面暗部的颜色。抽查首帧、中段、尾帧确认可读。粉色 `&H00FF8FCF` 只是可选强调色，不是默认字幕色。
