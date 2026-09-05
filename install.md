@@ -201,7 +201,7 @@ Tell the user, in one short message:
 npx skills update -g -y
 ```
 
-If `pyproject.toml` changed deps, re-run `uv sync` / `pip install -e .` in `$SKILL_ROOT` after updating. A git clone can `git pull --ff-only` instead of the CLI.
+If `pyproject.toml` changed deps, re-run `uv sync` / `pip install -e .` in `$SKILL_ROOT` after updating. A git clone can `git pull --ff-only` instead of the CLI. **`npx skills update` may replace the installed directory; confirm `$SKILL_ROOT/.env` still exists afterward (restore it if the updater wiped it).**
 
 ## Cold-start reminders
 

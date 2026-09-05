@@ -61,7 +61,7 @@ npx skills add dannywsh/biliup -g -y
 npx skills update -g -y
 ```
 
-全局安装后 skill 根目录一般是 `~/.agents/skills/video-use/`（Claude Code 下 `~/.claude/skills/video-use` 会链过去）。密钥写在该目录 `.env`，不要提交。
+全局安装后 skill 根目录一般是 `~/.agents/skills/video-use/`（Claude Code 下 `~/.claude/skills/video-use` 会链过去）。密钥写在该目录 `.env`，不要提交。`npx skills update` 可能整目录替换已安装文件，更新后检查 `.env` 是否还在。
 
 之后更新：
 
