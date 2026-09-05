@@ -25,7 +25,6 @@ import argparse
 import array
 import json
 import math
-import os
 import subprocess
 import sys
 import tempfile
@@ -35,25 +34,12 @@ from pathlib import Path
 
 import requests
 
+from env_file import load_env_value
+
 
 SCRIBE_URL = "https://api.elevenlabs.io/v1/speech-to-text"
 DEFAULT_PARAFORMER_URL = "https://paraformer.ow2shit.top"
 PROVIDERS = ("elevenlabs", "paraformer")
-
-
-def load_env_value(name: str, default: str = "") -> str:
-    """Read one value from skill-root .env, cwd .env, then the process environment."""
-    for candidate in (Path(__file__).resolve().parent.parent / ".env", Path.cwd() / ".env"):
-        if not candidate.exists():
-            continue
-        for line in candidate.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            if key.strip() == name:
-                return value.strip().strip('"').strip("'")
-    return os.environ.get(name, default).strip()
 
 
 def load_api_key(name: str = "ELEVENLABS_API_KEY") -> str:

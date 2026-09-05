@@ -161,34 +161,7 @@ function optimizePrompt(prompt, enable = true, isSequential = false) {
 // 🔑 API Key（video-use .env 查找，不用平台扫 key）
 // ============================================
 
-const os = require('os');
-
-function parseDotEnv(filePath) {
-  if (!fs.existsSync(filePath)) return {};
-  const values = {};
-  for (const raw of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#') || !line.includes('=')) continue;
-    const eq = line.indexOf('=');
-    const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    values[key] = value;
-  }
-  return values;
-}
-
-function loadEnvValue(name) {
-  const skillRootEnv = path.resolve(__dirname, '../../../.env');
-  const cwdEnv = path.join(process.cwd(), '.env');
-  for (const file of [skillRootEnv, cwdEnv]) {
-    const value = (parseDotEnv(file)[name] || '').trim();
-    if (value) return value;
-  }
-  return (process.env[name] || '').trim();
-}
+const { loadEnvValue } = require("../../../helpers/env_file.js");
 
 function validateArkKey(key) {
   if (!key || typeof key !== 'string') {
@@ -260,7 +233,7 @@ function validateConfig() {
 
   if (!CONFIG.apiKey) {
     errors.push('ARK_SEEDREAM_API_KEY not found in .env or environment');
-    errors.push('Set ARK_SEEDREAM_API_KEY=ark-xxx in the video-use skill-root .env (must start with ark-).');
+    errors.push('Set ARK_SEEDREAM_API_KEY=ark-xxx in the user-config .env (must start with ark-).');
   }
 
   return {

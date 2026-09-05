@@ -54,7 +54,6 @@ import argparse
 import base64
 import io
 import json
-import os
 import re
 import subprocess
 import sys
@@ -62,6 +61,8 @@ import wave
 from pathlib import Path
 
 import requests
+
+from env_file import load_env_value
 
 
 # ---------------------------------------------------------------------------
@@ -76,24 +77,12 @@ PROVIDER_ENV_KEYS = {
 
 
 def load_api_key(provider: str) -> str:
-    """Load an API key from .env (repo root or cwd) or the environment."""
+    """Load an API key from the user config .env, skill-root, cwd, or the environment."""
     env_var = PROVIDER_ENV_KEYS[provider]
-    for candidate in (
-        Path(__file__).resolve().parent.parent / ".env",
-        Path.cwd() / ".env",
-    ):
-        if candidate.exists():
-            for line in candidate.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                if k.strip() == env_var:
-                    return v.strip().strip('"').strip("'")
-    v = os.environ.get(env_var, "")
-    if not v:
+    value = load_env_value(env_var)
+    if not value:
         sys.exit(f"{env_var} not found in .env or environment")
-    return v
+    return value
 
 
 # ---------------------------------------------------------------------------

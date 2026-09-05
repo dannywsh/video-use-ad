@@ -15,7 +15,7 @@ Three things must exist on this machine:
 
 1. This skill installed from **`dannywsh/video-use-ad`** (not upstream `browser-use/video-use`). Nested `skills/bili-cover/` ships with it.
 2. `ffmpeg` on `$PATH` (plus optional `yt-dlp` for online sources).
-3. Credentials in `.env` at the **skill root**: `ELEVENLABS_API_KEY` for Scribe (default ASR), and/or `PARAFORMER_API_TOKEN` for Chinese Paraformer ASR. For default TTS add `FISH_API_KEY`. Cover backends optionally need `GCP_GEMINI_IMAGE_API_KEY` and `ARK_SEEDREAM_API_KEY`. MiMo is optional and only if the user asks for it.
+3. Credentials in the user-config `.env` (not the skill install folder): `~/.config/video-use/.env` on all platforms (Windows: `%USERPROFILE%\.config\video-use\.env`). `ELEVENLABS_API_KEY` for Scribe (default ASR), and/or `PARAFORMER_API_TOKEN` for Chinese Paraformer ASR. For default TTS add `FISH_API_KEY`. Cover backends optionally need `GCP_GEMINI_IMAGE_API_KEY` and `ARK_SEEDREAM_API_KEY`. MiMo is optional and only if the user asks for it.
 
 And one thing must be true about the current agent:
 
@@ -45,6 +45,9 @@ Then:
 SKILL_ROOT="${HOME}/.agents/skills/video-use"
 test -d "$SKILL_ROOT" || SKILL_ROOT="${HOME}/.claude/skills/video-use"
 cd "$SKILL_ROOT"
+USER_ENV="${VIDEO_USE_ENV:-${XDG_CONFIG_HOME:-$HOME/.config}/video-use/.env}"
+mkdir -p "$(dirname "$USER_ENV")"
+python helpers/env_file.py --migrate
 ```
 
 If the Skills CLI is unavailable, clone **this** repo and symlink the whole directory (not just `SKILL.md`):
@@ -96,7 +99,7 @@ If you can't tell which agent you're in, ask once.
 
 ### 5. API keys
 
-Write keys to `"$SKILL_ROOT/.env"`. Never print a key. Never commit `.env`. Do not clobber an existing `.env`.
+`USER_ENV` is `~/.config/video-use/.env` on all platforms, including Windows `%USERPROFILE%\.config\video-use\.env` (`python helpers/env_file.py --user-path` prints it). Create the parent dir if needed. Write keys to `"$USER_ENV"`. Never print a key. Never commit `.env`. Do not clobber an existing `.env`. Do not write keys into `$SKILL_ROOT` — `npx skills update` deletes that directory.
 
 Transcription has two providers. Scribe (ElevenLabs) is the default. Paraformer is optional for Chinese TTS subtitle timing. Default TTS is Fish Audio. Cover generation uses `skills/bili-cover/` (`GCP_GEMINI_IMAGE_API_KEY`, `ARK_SEEDREAM_API_KEY`). MiMo is opt-in only.
 
@@ -106,23 +109,23 @@ Transcription has two providers. Scribe (ElevenLabs) is the default. Paraformer 
 
     ```bash
     [ -n "$ELEVENLABS_API_KEY" ] && echo "env"
-    grep -q '^ELEVENLABS_API_KEY=..' "$SKILL_ROOT/.env" 2>/dev/null && echo "dotenv"
+    grep -q '^ELEVENLABS_API_KEY=..' "$USER_ENV" 2>/dev/null && echo "dotenv"
     ```
 
 2. If neither is set, ask the user exactly once for a key from https://elevenlabs.io/app/settings/api-keys and append it:
 
     ```bash
-    touch "$SKILL_ROOT/.env"
-    grep -q '^ELEVENLABS_API_KEY=' "$SKILL_ROOT/.env" \
-      || printf 'ELEVENLABS_API_KEY=%s\n' "$KEY" >> "$SKILL_ROOT/.env"
-    chmod 600 "$SKILL_ROOT/.env"
+    touch "$USER_ENV"
+    grep -q '^ELEVENLABS_API_KEY=' "$USER_ENV" \
+      || printf 'ELEVENLABS_API_KEY=%s\n' "$KEY" >> "$USER_ENV"
+    chmod 600 "$USER_ENV" 2>/dev/null || true
     ```
 
 3. Sanity check with a cheap, quota-free call:
 
     ```bash
     curl -s -o /dev/null -w '%{http_code}\n' \
-      -H "xi-api-key: $(sed -n 's/^ELEVENLABS_API_KEY=//p' "$SKILL_ROOT/.env")" \
+      -H "xi-api-key: $(sed -n 's/^ELEVENLABS_API_KEY=//p' "$USER_ENV")" \
       https://api.elevenlabs.io/v1/user
     ```
 
@@ -136,31 +139,31 @@ Hosted FunASR Paraformer-large. Default URL is `https://paraformer.ow2shit.top`.
 
     ```bash
     [ -n "$PARAFORMER_API_TOKEN" ] && echo "env"
-    grep -q '^PARAFORMER_API_TOKEN=..' "$SKILL_ROOT/.env" 2>/dev/null && echo "dotenv"
-    touch "$SKILL_ROOT/.env"
-    grep -q '^PARAFORMER_API_TOKEN=' "$SKILL_ROOT/.env" \
-      || printf 'PARAFORMER_API_TOKEN=%s\n' "$PARAFORMER_TOKEN" >> "$SKILL_ROOT/.env"
-    grep -q '^PARAFORMER_API_URL=' "$SKILL_ROOT/.env" \
-      || printf 'PARAFORMER_API_URL=%s\n' 'https://paraformer.ow2shit.top' >> "$SKILL_ROOT/.env"
-    chmod 600 "$SKILL_ROOT/.env"
+    grep -q '^PARAFORMER_API_TOKEN=..' "$USER_ENV" 2>/dev/null && echo "dotenv"
+    touch "$USER_ENV"
+    grep -q '^PARAFORMER_API_TOKEN=' "$USER_ENV" \
+      || printf 'PARAFORMER_API_TOKEN=%s\n' "$PARAFORMER_TOKEN" >> "$USER_ENV"
+    grep -q '^PARAFORMER_API_URL=' "$USER_ENV" \
+      || printf 'PARAFORMER_API_URL=%s\n' 'https://paraformer.ow2shit.top' >> "$USER_ENV"
+    chmod 600 "$USER_ENV" 2>/dev/null || true
     curl -s -o /dev/null -w '%{http_code}\n' https://paraformer.ow2shit.top/health
     ```
 
 #### Fish Audio (default TTS)
 
     ```bash
-    grep -q '^FISH_API_KEY=' "$SKILL_ROOT/.env" \
-      || printf 'FISH_API_KEY=%s\n' "$FISH_KEY" >> "$SKILL_ROOT/.env"
-    chmod 600 "$SKILL_ROOT/.env"
+    grep -q '^FISH_API_KEY=' "$USER_ENV" \
+      || printf 'FISH_API_KEY=%s\n' "$FISH_KEY" >> "$USER_ENV"
+    chmod 600 "$USER_ENV" 2>/dev/null || true
     ```
 
 #### Cover backends (optional until a Bilibili cover is required)
 
     ```bash
-    grep -q '^GCP_GEMINI_IMAGE_API_KEY=' "$SKILL_ROOT/.env" \
-      || printf 'GCP_GEMINI_IMAGE_API_KEY=%s\n' "$GCP_GEMINI_IMAGE_API_KEY" >> "$SKILL_ROOT/.env"
-    grep -q '^ARK_SEEDREAM_API_KEY=' "$SKILL_ROOT/.env" \
-      || printf 'ARK_SEEDREAM_API_KEY=%s\n' "$ARK_SEEDREAM_API_KEY" >> "$SKILL_ROOT/.env"
+    grep -q '^GCP_GEMINI_IMAGE_API_KEY=' "$USER_ENV" \
+      || printf 'GCP_GEMINI_IMAGE_API_KEY=%s\n' "$GCP_GEMINI_IMAGE_API_KEY" >> "$USER_ENV"
+    grep -q '^ARK_SEEDREAM_API_KEY=' "$USER_ENV" \
+      || printf 'ARK_SEEDREAM_API_KEY=%s\n' "$ARK_SEEDREAM_API_KEY" >> "$USER_ENV"
     ```
 
 Empty values count as missing. Model / endpoint overrides are in `.env.example`.
@@ -170,8 +173,8 @@ Empty values count as missing. Model / endpoint overrides are in `.env.example`.
 Ask for `MIMO_API_KEY` only if the user explicitly wants MiMo.
 
     ```bash
-    grep -q '^MIMO_API_KEY=' "$SKILL_ROOT/.env" \
-      || printf 'MIMO_API_KEY=%s\n' "$MIMO_KEY" >> "$SKILL_ROOT/.env"
+    grep -q '^MIMO_API_KEY=' "$USER_ENV" \
+      || printf 'MIMO_API_KEY=%s\n' "$MIMO_KEY" >> "$USER_ENV"
     ```
 
 ### 6. Verify end-to-end
@@ -196,16 +199,21 @@ Tell the user, in one short message:
 
 ## Keeping the skill current
 
+`npx skills update` deletes and recreates the skill directory. Keys are not stored there.
+
 ```bash
+SKILL_ROOT="${HOME}/.agents/skills/video-use"
+test -d "$SKILL_ROOT" || SKILL_ROOT="${HOME}/.claude/skills/video-use"
+python "$SKILL_ROOT/helpers/env_file.py" --migrate
 npx skills update -g -y
 ```
 
-If `pyproject.toml` changed deps, re-run `uv sync` / `pip install -e .` in `$SKILL_ROOT` after updating. A git clone can `git pull --ff-only` instead of the CLI. **`npx skills update` may replace the installed directory; confirm `$SKILL_ROOT/.env` still exists afterward (restore it if the updater wiped it).**
+If `pyproject.toml` changed deps, re-run `uv sync` / `pip install -e .` in `$SKILL_ROOT` after updating. A git clone can `git pull --ff-only` instead of the CLI (that path does not wipe `.env`).
 
 ## Cold-start reminders
 
 - Symlink the **whole directory**, not just `SKILL.md`.
-- If `.env` exists but the key is empty, treat it as missing.
+- If the user-config `.env` exists but the key is empty, treat it as missing.
 - `ffmpeg` ≥ 4.x is enough. `yt-dlp` is optional.
 - Node.js 18+ is needed for `ark-seedream` covers; HyperFrames currently wants Node 22+.
 - HyperFrames, Remotion, and Manim are optional; install per animation slot, not at setup.

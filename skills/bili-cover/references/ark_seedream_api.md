@@ -6,7 +6,7 @@ Cover work is usually one 16:9 still (`sequential=false`). The HTTP/CLI surface 
 
 ## Credentials and env
 
-Lookup (same as parent TTS): skill-root `.env` → cwd `.env` → process env. Only `ARK_SEEDREAM_*` names; do not scan `ANTHROPIC_AUTH_TOKEN` or a generic `ARK_API_KEY`.
+Lookup (same as parent TTS): user-config `.env` (`~/.config/video-use/.env`, Windows `%USERPROFILE%\.config\video-use\.env`) → leftover skill-root `.env` → cwd `.env` → process env. Only `ARK_SEEDREAM_*` names; do not scan `ANTHROPIC_AUTH_TOKEN` or a generic `ARK_API_KEY`.
 
 | Variable | Default |
 |----------|---------|

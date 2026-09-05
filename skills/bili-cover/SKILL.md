@@ -27,7 +27,7 @@ Named aliases: Gemini / Google / Vertex → `gcp-gemini`. Seedream / 豆包画�
 
 ## Credentials
 
-Same lookup as parent TTS: `<skill_root>/.env` (repo root containing this `skills/` tree) → `<cwd>/.env` → exported env. Never print a key or its prefix.
+Same lookup as parent TTS: user-config `.env` (`~/.config/video-use/.env` on all platforms, Windows `%USERPROFILE%\.config\video-use\.env`; survives `npx skills update`) → leftover `<skill_root>/.env` → `<cwd>/.env` → exported env. Never print a key or its prefix. Write new keys to the user config file, not the skill install directory.
 
 | Variable | Role |
 |----------|------|

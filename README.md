@@ -60,11 +60,16 @@ npx skills add dannywsh/biliup -g -y
 npx skills update -g -y
 ```
 
-全局安装后 skill 根目录一般是 `~/.agents/skills/video-use/`（Claude Code 下 `~/.claude/skills/video-use` 会链过去）。密钥写在该目录 `.env`，不要提交。`npx skills update` 可能整目录替换已安装文件，更新后检查 `.env` 是否还在。
+全局安装后 skill 根目录一般是 `~/.agents/skills/video-use/`（Claude Code 下 `~/.claude/skills/video-use` 会链过去）。密钥写在用户配置目录，不要写进 skill 安装目录：`npx skills update` 会整目录删掉再建。
+
+- 全平台：`~/.config/video-use/.env`（Windows 即 `%USERPROFILE%\.config\video-use\.env`）
+
+本机路径：`python helpers/env_file.py --user-path`。若旧密钥还在 skill 目录 `.env` 里，先跑 `python helpers/env_file.py --migrate`。
 
 之后更新：
 
 ```bash
+python ~/.agents/skills/video-use/helpers/env_file.py --migrate
 npx skills update -g -y
 ```
 
@@ -82,8 +87,13 @@ uv sync                         # 或：pip install -e .
 brew install ffmpeg             # 必需
 brew install yt-dlp             # 可选，用于下载在线素材
 
-cp .env.example .env            # 填 FISH_API_KEY，以及 ELEVENLABS_API_KEY 或 PARAFORMER_API_TOKEN
+mkdir -p ~/.config/video-use
+cp .env.example ~/.config/video-use/.env   # 填 FISH_API_KEY，以及 ELEVENLABS_API_KEY 或 PARAFORMER_API_TOKEN
 # 封面可选：GCP_GEMINI_IMAGE_API_KEY、ARK_SEEDREAM_API_KEY；MIMO_API_KEY 仅在使用 MiMo 时需要
+chmod 600 ~/.config/video-use/.env         # Windows 可省略 chmod
+# Windows PowerShell:
+# New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\video-use" | Out-Null
+# Copy-Item .env.example "$env:USERPROFILE\.config\video-use\.env"
 ```
 
 ## 项目结构
