@@ -34,7 +34,6 @@ And one thing must be true about the current agent:
 ### 1. Install the skill
 
 ```bash
-npx skills add dannywsh/skills -g -y
 npx skills add dannywsh/video-use-ad -g -y
 npx skills add dannywsh/biliup -g -y
 npx skills update -g -y

@@ -52,10 +52,9 @@ claude    # 或 codex、hermes 等
 
 ## 安装 skill（用户）
 
-装的是本仓（`dannywsh/video-use-ad`），不要装上游 `browser-use/video-use`。目录仓见 [dannywsh/skills](https://github.com/dannywsh/skills)。嵌套的 `skills/bili-cover/` 随本仓一起安装，不必再 add 一次。
+装的是本仓（`dannywsh/video-use-ad`），不要装上游 `browser-use/video-use`。目录见 [dannywsh/skills](https://github.com/dannywsh/skills)。嵌套的 `skills/bili-cover/` 随本仓一起安装，不必再装独立 Seedream skill。
 
 ```bash
-npx skills add dannywsh/skills -g -y
 npx skills add dannywsh/video-use-ad -g -y
 npx skills add dannywsh/biliup -g -y
 npx skills update -g -y
