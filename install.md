@@ -13,36 +13,54 @@ You're setting up a conversation-driven video editor for the user. After install
 
 Three things must exist on this machine:
 
-1. The `video-use` repo cloned somewhere stable.
+1. This skill installed from **`dannywsh/video-use-ad`** (not upstream `browser-use/video-use`). Nested `skills/bili-cover/` ships with it.
 2. `ffmpeg` on `$PATH` (plus optional `yt-dlp` for online sources).
-3. Transcription credentials in `.env` at the repo root: `ELEVENLABS_API_KEY` for Scribe (default ASR), and/or `PARAFORMER_API_TOKEN` for Chinese Paraformer ASR. For default TTS voiceover add `FISH_API_KEY`. MiMo is optional and only if the user asks for it.
+3. Credentials in `.env` at the **skill root**: `ELEVENLABS_API_KEY` for Scribe (default ASR), and/or `PARAFORMER_API_TOKEN` for Chinese Paraformer ASR. For default TTS add `FISH_API_KEY`. Cover backends optionally need `GCP_GEMINI_IMAGE_API_KEY` and `ARK_SEEDREAM_API_KEY`. MiMo is optional and only if the user asks for it.
 
 And one thing must be true about the current agent:
 
-4. It can discover `SKILL.md` — either via a global skills directory (`~/.claude/skills/`, `~/.codex/skills/`) or via a `CLAUDE.md` / system-prompt import.
+4. It can discover `SKILL.md` — either via a global skills directory (`~/.agents/skills/`, `~/.claude/skills/`, `~/.codex/skills/`) or via a `CLAUDE.md` / system-prompt import.
 
 ## Install prompt contract
 
-- Do everything yourself. Only ask the user for things you cannot generate — the ElevenLabs API key and/or Paraformer token, the Fish Audio API key (default TTS), a MiMo key only if they ask for MiMo, and confirmation before `brew install`.
-- Prefer a stable clone path like `~/Developer/video-use` (not `/tmp`, not `~/Downloads`).
+- Do everything yourself. Only ask the user for things you cannot generate — API keys, and confirmation before `brew install`.
+- **Preferred install is `npx skills add dannywsh/video-use-ad -g -y`.** Do not clone `browser-use/video-use`. Do not invent a hard-coded `~/Developer/video-use` path.
+- After the CLI install, skill root is usually `$HOME/.agents/skills/video-use`. Resolve helpers from that directory (or the symlink under `~/.claude/skills/video-use`).
 - The skill references helpers by bare name (`transcribe.py`, `render.py`). That works because SKILL.md and `helpers/` ship together — keep them as siblings when you register the skill.
 - After install, verify by running one real command against one real file. Don't declare success on file-existence checks alone.
 
 ## Steps
 
-### 1. Clone to a stable path
+### 1. Install the skill
 
 ```bash
-test -d ~/Developer/video-use || git clone https://github.com/browser-use/video-use ~/Developer/video-use
-cd ~/Developer/video-use
+npx skills add dannywsh/skills -g -y
+npx skills add dannywsh/video-use-ad -g -y
+npx skills add dannywsh/biliup -g -y
+npx skills update -g -y
 ```
 
-If the repo is already there, `git pull --ff-only` and continue.
+Then:
+
+```bash
+SKILL_ROOT="${HOME}/.agents/skills/video-use"
+test -d "$SKILL_ROOT" || SKILL_ROOT="${HOME}/.claude/skills/video-use"
+cd "$SKILL_ROOT"
+```
+
+If the Skills CLI is unavailable, clone **this** repo and symlink the whole directory (not just `SKILL.md`):
+
+```bash
+git clone https://github.com/dannywsh/video-use-ad "$SKILL_ROOT"
+mkdir -p ~/.claude/skills
+ln -sfn "$SKILL_ROOT" ~/.claude/skills/video-use
+```
+
+If a copy already exists, `npx skills update -g -y` (preferred) or `git -C "$SKILL_ROOT" pull --ff-only` when it is a git clone.
 
 ### 2. Install Python deps
 
 ```bash
-# Prefer uv if available; fall back to pip.
 command -v uv >/dev/null && uv sync || pip install -e .
 ```
 
@@ -69,154 +87,128 @@ If `brew` / `apt` / `pacman` requires a sudo prompt, tell the user the exact com
 
 ### 4. Register the skill with the current agent
 
-Figure out which agent you are running under, and register once. A symlink of the whole repo directory is the right shape — helpers/ needs to sit next to SKILL.md.
+`npx skills add … -g` already registers globally for discovered agents. If you had to clone manually, symlink the **whole** skill-root directory:
 
-- **Claude Code** (`~/.claude/` present):
+- **Claude Code** (`~/.claude/` present): `ln -sfn "$SKILL_ROOT" ~/.claude/skills/video-use`
+- **Codex**: `ln -sfn "$SKILL_ROOT" "${CODEX_HOME:-$HOME/.codex}/skills/video-use"`
+- **Hermes / Openclaw / another agent**: symlink `$SKILL_ROOT` into that agent's skills directory as `video-use`, or import `$SKILL_ROOT/SKILL.md` in its system prompt.
 
-    ```bash
-    mkdir -p ~/.claude/skills
-    ln -sfn ~/Developer/video-use ~/.claude/skills/video-use
-    ```
-
-- **Codex** (`$CODEX_HOME` set, or `~/.codex/` present):
-
-    ```bash
-    mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-    ln -sfn ~/Developer/video-use "${CODEX_HOME:-$HOME/.codex}/skills/video-use"
-    ```
-
-- **Hermes / Openclaw / another agent with a skills directory**: symlink `~/Developer/video-use` into that agent's skills directory under the name `video-use`. If the agent has no skills directory, add a line to its system prompt / config pointing at `~/Developer/video-use/SKILL.md` (e.g. an `@~/Developer/video-use/SKILL.md` import in a `CLAUDE.md`-equivalent).
-
-If you can't tell which agent you're in, ask the user once: "which agent am I running under — Claude Code, Codex, or something else?" Then pick the right target.
+If you can't tell which agent you're in, ask once.
 
 ### 5. API keys
 
-Transcription has two providers. Scribe (ElevenLabs) is the default and is required for speaker diarization and audio-event tagging. Paraformer is optional and is the Chinese-first choice for TTS subtitle timing. Default TTS voiceover is Fish Audio via `helpers/tts.py`. MiMo is opt-in only.
+Write keys to `"$SKILL_ROOT/.env"`. Never print a key. Never commit `.env`. Do not clobber an existing `.env`.
+
+Transcription has two providers. Scribe (ElevenLabs) is the default. Paraformer is optional for Chinese TTS subtitle timing. Default TTS is Fish Audio. Cover generation uses `skills/bili-cover/` (`GCP_GEMINI_IMAGE_API_KEY`, `ARK_SEEDREAM_API_KEY`). MiMo is opt-in only.
 
 #### ElevenLabs (default ASR + ElevenLabs TTS)
 
-1. Check existing state in this order and stop at the first hit:
+1. Check existing state and stop at the first hit:
 
     ```bash
-    # a) env var already exported
     [ -n "$ELEVENLABS_API_KEY" ] && echo "env"
-    # b) .env at repo root already has it
-    grep -q '^ELEVENLABS_API_KEY=..' ~/Developer/video-use/.env 2>/dev/null && echo "dotenv"
+    grep -q '^ELEVENLABS_API_KEY=..' "$SKILL_ROOT/.env" 2>/dev/null && echo "dotenv"
     ```
 
-2. If neither is set, ask the user exactly once:
-
-    > I need an ElevenLabs API key for transcription (word-level timestamps, speaker diarization, filler tagging). Grab one at https://elevenlabs.io/app/settings/api-keys and paste it here — I'll write it to `~/Developer/video-use/.env`. Or if you already have it exported as `ELEVENLABS_API_KEY`, say "use env" and I'll skip.
-
-    When the user pastes a key, append it to `~/Developer/video-use/.env` (do not clobber an existing `.env` — it may already hold other keys):
+2. If neither is set, ask the user exactly once for a key from https://elevenlabs.io/app/settings/api-keys and append it:
 
     ```bash
-    touch ~/Developer/video-use/.env
-    grep -q '^ELEVENLABS_API_KEY=' ~/Developer/video-use/.env \
-      || printf 'ELEVENLABS_API_KEY=%s\n' "$KEY" >> ~/Developer/video-use/.env
-    chmod 600 ~/Developer/video-use/.env
+    touch "$SKILL_ROOT/.env"
+    grep -q '^ELEVENLABS_API_KEY=' "$SKILL_ROOT/.env" \
+      || printf 'ELEVENLABS_API_KEY=%s\n' "$KEY" >> "$SKILL_ROOT/.env"
+    chmod 600 "$SKILL_ROOT/.env"
     ```
-
-    Never echo the key back in tool output. Never commit `.env`.
 
 3. Sanity check with a cheap, quota-free call:
 
     ```bash
     curl -s -o /dev/null -w '%{http_code}\n' \
-      -H "xi-api-key: $(sed -n 's/^ELEVENLABS_API_KEY=//p' ~/Developer/video-use/.env)" \
+      -H "xi-api-key: $(sed -n 's/^ELEVENLABS_API_KEY=//p' "$SKILL_ROOT/.env")" \
       https://api.elevenlabs.io/v1/user
     ```
 
-    `200` means the key works. `401` means the user pasted a wrong/expired key — ask once more and stop. Anything else (network, 5xx), move on and verify during first real transcription.
+    `200` means the key works. `401` means ask once more and stop.
 
 If the user only needs Chinese TTS subtitle timing and already has a Paraformer token, Scribe can be skipped for now.
 
 #### Paraformer (optional — Chinese ASR)
 
-Hosted FunASR Paraformer-large. Default URL is `https://paraformer.ow2shit.top`. Health check is public; transcription requires a Bearer token.
-
-1. Check existing state:
+Hosted FunASR Paraformer-large. Default URL is `https://paraformer.ow2shit.top`.
 
     ```bash
     [ -n "$PARAFORMER_API_TOKEN" ] && echo "env"
-    grep -q '^PARAFORMER_API_TOKEN=..' ~/Developer/video-use/.env 2>/dev/null && echo "dotenv"
-    ```
-
-2. If neither is set and the user wants this provider, ask once for the token and append it (do not clobber other keys). Optional URL override:
-
-    ```bash
-    touch ~/Developer/video-use/.env
-    grep -q '^PARAFORMER_API_TOKEN=' ~/Developer/video-use/.env \
-      || printf 'PARAFORMER_API_TOKEN=%s\n' "$PARAFORMER_TOKEN" >> ~/Developer/video-use/.env
-    grep -q '^PARAFORMER_API_URL=' ~/Developer/video-use/.env \
-      || printf 'PARAFORMER_API_URL=%s\n' 'https://paraformer.ow2shit.top' >> ~/Developer/video-use/.env
-    chmod 600 ~/Developer/video-use/.env
-    ```
-
-    Never echo the token back in tool output. Never commit `.env`.
-
-3. Sanity check:
-
-    ```bash
+    grep -q '^PARAFORMER_API_TOKEN=..' "$SKILL_ROOT/.env" 2>/dev/null && echo "dotenv"
+    touch "$SKILL_ROOT/.env"
+    grep -q '^PARAFORMER_API_TOKEN=' "$SKILL_ROOT/.env" \
+      || printf 'PARAFORMER_API_TOKEN=%s\n' "$PARAFORMER_TOKEN" >> "$SKILL_ROOT/.env"
+    grep -q '^PARAFORMER_API_URL=' "$SKILL_ROOT/.env" \
+      || printf 'PARAFORMER_API_URL=%s\n' 'https://paraformer.ow2shit.top' >> "$SKILL_ROOT/.env"
+    chmod 600 "$SKILL_ROOT/.env"
     curl -s -o /dev/null -w '%{http_code}\n' https://paraformer.ow2shit.top/health
     ```
 
-    `200` means the host is up. Verify the token on the first real `--provider paraformer` transcription.
+#### Fish Audio (default TTS)
 
-#### Fish Audio (default TTS — persistent private voice cloning)
+    ```bash
+    grep -q '^FISH_API_KEY=' "$SKILL_ROOT/.env" \
+      || printf 'FISH_API_KEY=%s\n' "$FISH_KEY" >> "$SKILL_ROOT/.env"
+    chmod 600 "$SKILL_ROOT/.env"
+    ```
 
-Default voiceover provider. Ask for the key when the user wants AI narration, after confirming they have the right to clone any supplied voice. Add it to the same repo-root `.env` without replacing other keys:
+#### Cover backends (optional until a Bilibili cover is required)
 
-```bash
-grep -q '^FISH_API_KEY=' ~/Developer/video-use/.env \
-  || printf 'FISH_API_KEY=%s\n' "$FISH_KEY" >> ~/Developer/video-use/.env
-chmod 600 ~/Developer/video-use/.env
-```
+    ```bash
+    grep -q '^GCP_GEMINI_IMAGE_API_KEY=' "$SKILL_ROOT/.env" \
+      || printf 'GCP_GEMINI_IMAGE_API_KEY=%s\n' "$GCP_GEMINI_IMAGE_API_KEY" >> "$SKILL_ROOT/.env"
+    grep -q '^ARK_SEEDREAM_API_KEY=' "$SKILL_ROOT/.env" \
+      || printf 'ARK_SEEDREAM_API_KEY=%s\n' "$ARK_SEEDREAM_API_KEY" >> "$SKILL_ROOT/.env"
+    ```
 
-`helpers/tts.py --provider fish --reference-audio sample.wav ...` creates a private model and prints its reusable voice ID. Fish Audio accepts `.wav`, `.mp3`, `.m4a`, and `.opus`; clean, single-speaker clips of at least 10 seconds are recommended. Do not print or commit the key.
+Empty values count as missing. Model / endpoint overrides are in `.env.example`.
 
 #### MiMo (opt-in only)
 
-Ask for `MIMO_API_KEY` only if the user explicitly wants MiMo. Do not offer it as the default voiceover provider.
+Ask for `MIMO_API_KEY` only if the user explicitly wants MiMo.
 
-```bash
-grep -q '^MIMO_API_KEY=' ~/Developer/video-use/.env \
-  || printf 'MIMO_API_KEY=%s\n' "$MIMO_KEY" >> ~/Developer/video-use/.env
-```
+    ```bash
+    grep -q '^MIMO_API_KEY=' "$SKILL_ROOT/.env" \
+      || printf 'MIMO_API_KEY=%s\n' "$MIMO_KEY" >> "$SKILL_ROOT/.env"
+    ```
 
 ### 6. Verify end-to-end
 
-Run one real thing. Prefer the lightest verification that still proves the pipeline is wired up:
-
 ```bash
-python ~/Developer/video-use/helpers/timeline_view.py --help >/dev/null && echo "helpers OK"
-python ~/Developer/video-use/helpers/tts.py --help >/dev/null && echo "tts OK"
+python "$SKILL_ROOT/helpers/timeline_view.py" --help >/dev/null && echo "helpers OK"
+python "$SKILL_ROOT/helpers/tts.py" --help >/dev/null && echo "tts OK"
+test -f "$SKILL_ROOT/skills/bili-cover/SKILL.md" && echo "bili-cover OK"
 ffprobe -version | head -1
 ```
 
-Full transcription test is optional at install time — it burns Scribe credits. Better to wait until the user hands you their first clip.
+Full transcription test is optional at install time — it burns Scribe credits.
 
 ### 7. Hand off
 
 Tell the user, in one short message:
 
-- Where the skill is installed (`~/Developer/video-use`).
-- That they should `cd` into their footage folder and start their agent there (e.g. `claude`).
-- That a good first message is: *"edit these into a launch video"* or *"inventory these takes and propose a strategy."*
-- That all outputs land in `<videos_dir>/edit/` — the repo stays clean.
+- Skill root (`$SKILL_ROOT`, usually `~/.agents/skills/video-use`).
+- `cd` into the footage folder and start the agent there.
+- A good first message: *"edit these into a launch video"* or *"inventory these takes and propose a strategy."*
+- Outputs land in `<videos_dir>/edit/`.
 
 ## Keeping the skill current
 
-- `cd ~/Developer/video-use && git pull --ff-only` pulls the latest code. The symlink auto-picks it up on the next run.
-- If `pyproject.toml` changed deps, re-run `uv sync` / `pip install -e .` after pulling.
+```bash
+npx skills update -g -y
+```
+
+If `pyproject.toml` changed deps, re-run `uv sync` / `pip install -e .` in `$SKILL_ROOT` after updating. A git clone can `git pull --ff-only` instead of the CLI.
 
 ## Cold-start reminders
 
-- Symlink the **whole directory**, not just `SKILL.md`. The helpers need to sit next to it.
-- If `.env` exists but the key is empty, treat it the same as missing — don't assume existence means validity.
-- `ffmpeg` from static builds works fine. Any modern (≥ 4.x) build is enough.
-- `yt-dlp` is optional. Don't block install on it; install lazily the first time a user asks to pull from a URL.
-- Node.js/npm are only needed for HyperFrames or Remotion slots. HyperFrames currently requires Node.js 22+.
-- HyperFrames, Remotion, and Manim are optional animation engines. Don't install or prefer one globally during setup; pick the engine per animation slot in `SKILL.md`. HyperFrames can run through `npx --yes hyperframes ...` in the slot directory. Remotion can be scaffolded with `npx create-video@latest` or installed inside the slot before rendering.
-- Never run transcription as part of install verification unless the user explicitly asks — Scribe costs real money.
-- If the user is on Linux without a package manager Claude recognizes, print the manual `ffmpeg` install URL and wait rather than guessing.
+- Symlink the **whole directory**, not just `SKILL.md`.
+- If `.env` exists but the key is empty, treat it as missing.
+- `ffmpeg` ≥ 4.x is enough. `yt-dlp` is optional.
+- Node.js 18+ is needed for `ark-seedream` covers; HyperFrames currently wants Node 22+.
+- HyperFrames, Remotion, and Manim are optional; install per animation slot, not at setup.
+- Never run transcription as part of install verification unless the user asks.
+- Catalog of this author's skills: https://github.com/dannywsh/skills

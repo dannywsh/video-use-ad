@@ -34,6 +34,7 @@ Read install.md first to install this repo, wire up ffmpeg, register the skill w
 - **ElevenLabs API Key**（Scribe 默认 ASR / ElevenLabs TTS 时必需）— 词级转写、说话人分离，在 [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys) 获取
 - **Paraformer Token**（中文 ASR 可选）— 托管 FunASR Paraformer-large，适合中文口播字幕时间戳；写入 `PARAFORMER_API_TOKEN`，默认地址 `https://paraformer.ow2shit.top`
 - **Fish Audio API Key**（默认 TTS / 声音克隆）— 在 [Fish Audio](https://fish.audio) 获取
+- **GCP Gemini / Ark Seedream**（B 站封面可选）— `GCP_GEMINI_IMAGE_API_KEY`、`ARK_SEEDREAM_API_KEY`，见 `.env.example`
 - **MiMo API Key**（可选）— 仅当明确要求 MiMo 配音时需要，在 [mimo.mi.com](https://mimo.mi.com) 获取
 
 然后进入素材文件夹启动助手：
@@ -51,30 +52,39 @@ claude    # 或 codex、hermes 等
 
 ## 安装 skill（用户）
 
-装的是本仓（dannywsh/video-use-ad），不要装上游 `browser-use/video-use`。
+装的是本仓（`dannywsh/video-use-ad`），不要装上游 `browser-use/video-use`。目录仓见 [dannywsh/skills](https://github.com/dannywsh/skills)。嵌套的 `skills/bili-cover/` 随本仓一起安装，不必再 add 一次。
 
 ```bash
+npx skills add dannywsh/skills -g -y
 npx skills add dannywsh/video-use-ad -g -y
+npx skills add dannywsh/biliup -g -y
+npx skills update -g -y
+```
+
+全局安装后 skill 根目录一般是 `~/.agents/skills/video-use/`（Claude Code 下 `~/.claude/skills/video-use` 会链过去）。密钥写在该目录 `.env`，不要提交。
+
+之后更新：
+
+```bash
 npx skills update -g -y
 ```
 
 ## 手动安装
 
-```bash
-# 1. 克隆到稳定路径并软链接到助手的 skills 目录
-git clone https://github.com/dannywsh/video-use-ad ~/Developer/video-use-ad
-ln -sfn ~/Developer/video-use-ad ~/.claude/skills/video-use     # Claude Code
-# ln -sfn ~/Developer/video-use-ad ~/.codex/skills/video-use    # Codex
+仅当不使用 Skills CLI 时：
 
-# 2. 安装依赖
-cd ~/Developer/video-use-ad
+```bash
+git clone https://github.com/dannywsh/video-use-ad <skill_root>
+ln -sfn <skill_root> ~/.claude/skills/video-use     # Claude Code
+# ln -sfn <skill_root> ~/.codex/skills/video-use    # Codex
+
+cd <skill_root>
 uv sync                         # 或：pip install -e .
 brew install ffmpeg             # 必需
 brew install yt-dlp             # 可选，用于下载在线素材
 
-# 3. 配置 API Key
-cp .env.example .env
-$EDITOR .env                    # 填入 FISH_API_KEY（默认 TTS），以及 ELEVENLABS_API_KEY 或 PARAFORMER_API_TOKEN；MIMO_API_KEY 仅在使用 MiMo 时需要
+cp .env.example .env            # 填 FISH_API_KEY，以及 ELEVENLABS_API_KEY 或 PARAFORMER_API_TOKEN
+# 封面可选：GCP_GEMINI_IMAGE_API_KEY、ARK_SEEDREAM_API_KEY；MIMO_API_KEY 仅在使用 MiMo 时需要
 ```
 
 ## 项目结构
