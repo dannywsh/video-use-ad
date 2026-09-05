@@ -1,8 +1,11 @@
 import json
 import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
-import sys
+
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "helpers"))
 import stable_motion as S  # noqa: E402
@@ -75,25 +78,35 @@ class ScrollWindowTests(unittest.TestCase):
 
 
 class ProbeCliTests(unittest.TestCase):
-    def test_probe_json_on_real_image_if_present(self):
-        image = Path(
-            ""
-            "tall.jpg"
-        )
-        if not image.is_file():
-            self.skipTest("sample long poster not on this machine")
-        helper = Path(__file__).parents[1] / "helpers" / "stable_motion.py"
-        result = subprocess.run(
-            [sys.executable, str(helper), str(image), "--mode", "scroll", "--duration", "7", "--probe"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+    def test_probe_json_on_tall_fixture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "tall.jpg"
+            Image.new("RGB", (800, 4000), (20, 40, 80)).save(image, quality=90)
+            helper = Path(__file__).parents[1] / "helpers" / "stable_motion.py"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(helper),
+                    str(image),
+                    "--mode",
+                    "scroll",
+                    "--duration",
+                    "7",
+                    "--probe",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
         payload = json.loads(result.stdout)
         self.assertTrue(payload["cropped"])
         self.assertLess(payload["crop_h"], payload["source_h"])
-        self.assertAlmostEqual(payload["viewports_per_sec"], S.DEFAULT_SCROLL_VIEWPORTS_PER_SEC, places=2)
-        self.assertAlmostEqual(payload["locked_vps"], S.DEFAULT_SCROLL_VIEWPORTS_PER_SEC, places=2)
+        self.assertAlmostEqual(
+            payload["viewports_per_sec"], S.DEFAULT_SCROLL_VIEWPORTS_PER_SEC, places=2
+        )
+        self.assertAlmostEqual(
+            payload["locked_vps"], S.DEFAULT_SCROLL_VIEWPORTS_PER_SEC, places=2
+        )
         self.assertLess(payload["hold_s"], 0.2)
 
 
