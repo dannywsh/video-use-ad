@@ -153,4 +153,4 @@ stderr = progress. stdout = JSON:
 }
 ```
 
-Parse stdout; show local paths to the user. Cover delivery still copies/renames the first JPEG to `<videos_dir>/edit/cover.jpg`.
+Parse stdout; show local paths to the user. Cover delivery copies/renames the first JPEG to `<videos_dir>/edit/cover.jpg`, then crops `<videos_dir>/edit/cover-4x3.jpg` with `scripts/crop_cover43.py`. Do not use `sequential` for a 4:3 twin.
