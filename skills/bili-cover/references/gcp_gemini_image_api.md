@@ -71,7 +71,7 @@ Defaults:
 - Text prompt is a `text` part. Reference stills are extra `inline_data` parts (`mime_type` + base64). Local files: JPEG / PNG / WEBP; max 14 images (model limit). Use `inline_data` even if some docs show `inlineData` / `fileData`.
 - Cover **must** set `imageConfig.aspectRatio` to `16:9` (do not use the official sample’s `"auto"` for Bilibili covers). Supported ratios include 1:1 through 21:9; `16:9` is valid.
 - `imageSize`: `1K` (default) / `2K` / `4K` via `GCP_GEMINI_IMAGE_SIZE` or `--size`.
-- `imageOutputOptions.mimeType`: `image/jpeg` for `cover.jpg`.
+- `imageOutputOptions.mimeType`: `image/jpeg` for `cover.jpg`. After a successful 16:9 write, crop `cover-4x3.jpg` with `scripts/crop_cover43.py`; do not request `aspectRatio=4:3`.
 - `personGeneration`: `ALLOW_ALL` (ACG figures / people in stills).
 - `responseModalities`: both `TEXT` and `IMAGE`.
 - `thinkingConfig.thinkingLevel`: `MINIMAL`.
