@@ -203,7 +203,7 @@ MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，�
 素材在 <文件夹路径> 文件夹中。参考声音用 <.mp3>，BGM 风格：<风格>。
 ```
 
-完整规格见 [`SKILL.md`](./SKILL.md) 的 **Bilibili product promo** 一节。
+完整规格见 [`SKILL.md`](./SKILL.md) 的 **Bilibili product promo** 一节。封面 4:3 不再固定正中裁剪：先检查 16:9 画面，再根据主体和标题位置选择左、中央或右侧锚点；漫展/展览宣传图直接使用官方宣传图，不调用生图。
 
 ### 商品信息采集
 

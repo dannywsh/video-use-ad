@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Center-crop a 16:9 Bilibili cover into a 4:3 JPEG.
+"""Crop a 16:9 Bilibili cover into a 4:3 JPEG with a horizontal anchor.
 
 Do not generate a second 4:3 image. Composition (title placement around a
-fully visible product) is the skill's job, not this crop.
+subject placement) is the skill's job, not this crop.
 """
 
 from __future__ import annotations
@@ -35,15 +35,25 @@ def assert_aspect(
         )
 
 
-def center_crop_4x3_box(width: int, height: int) -> tuple[int, int, int, int]:
-    """Return (left, top, right, bottom) for a centered 4:3 rectangle."""
+def crop_4x3_box(width: int, height: int, anchor: str = "center") -> tuple[int, int, int, int]:
+    """Return a 4:3 rectangle aligned to the left, center, or right."""
     crop_w = round(height * RATIO_4_3)
     if crop_w <= width:
-        left = (width - crop_w) // 2
+        if anchor == "left":
+            left = 0
+        elif anchor == "right":
+            left = width - crop_w
+        else:
+            left = (width - crop_w) // 2
         return (left, 0, left + crop_w, height)
     crop_h = round(width / RATIO_4_3)
     top = (height - crop_h) // 2
     return (0, top, width, top + crop_h)
+
+
+def center_crop_4x3_box(width: int, height: int) -> tuple[int, int, int, int]:
+    """Backward-compatible wrapper for callers that explicitly need center crop."""
+    return crop_4x3_box(width, height, "center")
 
 
 def default_output_path(source: Path) -> Path:
@@ -52,12 +62,13 @@ def default_output_path(source: Path) -> Path:
     return source.with_name(f"{source.stem}-4x3.jpg")
 
 
-def crop_cover43(source: Path, output: Path) -> dict:
+def crop_cover43(source: Path, output: Path, anchor: str = "center") -> dict:
+    """Crop a verified 16:9 cover and report the selected anchor."""
     with Image.open(source) as image:
         rgb = image.convert("RGB")
         width, height = rgb.size
         assert_aspect(width, height, RATIO_16_9, label=str(source))
-        box = center_crop_4x3_box(width, height)
+        box = crop_4x3_box(width, height, anchor)
         cropped = rgb.crop(box)
         crop_w, crop_h = cropped.size
         assert_aspect(crop_w, crop_h, RATIO_4_3, label="4:3 crop")
@@ -70,12 +81,13 @@ def crop_cover43(source: Path, output: Path) -> dict:
         "source": [width, height],
         "crop": [crop_w, crop_h],
         "box": list(box),
+        "anchor": anchor,
     }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Crop a 16:9 Bilibili cover.jpg into a centered 4:3 JPEG."
+        description="Crop a 16:9 Bilibili cover.jpg into a left, center, or right 4:3 JPEG."
     )
     parser.add_argument("--input", required=True, help="Verified 16:9 cover.jpg")
     parser.add_argument(
@@ -83,12 +95,18 @@ def main() -> None:
         default=None,
         help="4:3 JPEG path. Default: cover-4x3.jpg next to --input.",
     )
+    parser.add_argument(
+        "--anchor",
+        choices=("left", "center", "right"),
+        default="center",
+        help="Horizontal crop anchor; choose after inspecting the subject/title layout.",
+    )
     args = parser.parse_args()
     source = Path(args.input)
     if not source.is_file():
         raise SystemExit(f"missing cover: {source}")
     output = Path(args.output) if args.output else default_output_path(source)
-    result = crop_cover43(source, output)
+    result = crop_cover43(source, output, args.anchor)
     json.dump(result, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
 
