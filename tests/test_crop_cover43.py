@@ -18,6 +18,10 @@ class BoxTests(unittest.TestCase):
     def test_1920x1080_crops_full_height_center(self):
         self.assertEqual(C.center_crop_4x3_box(1920, 1080), (240, 0, 1680, 1080))
 
+    def test_horizontal_anchor_keeps_left_or_right_subject(self):
+        self.assertEqual(C.crop_4x3_box(1920, 1080, "left"), (0, 0, 1440, 1080))
+        self.assertEqual(C.crop_4x3_box(1920, 1080, "right"), (480, 0, 1920, 1080))
+
     def test_1376x768_stays_inside_canvas(self):
         left, top, right, bottom = C.center_crop_4x3_box(1376, 768)
         self.assertEqual((top, bottom), (0, 768))

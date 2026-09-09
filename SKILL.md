@@ -71,7 +71,7 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
     ├── verify/                  ← debug frames / timeline PNGs / still bands
     ├── stills_inventory.md      ← promo stills: on-screen / voice-only facts / unused
     ├── cover.jpg                ← 16:9 Bilibili cover (skills/bili-cover)
-    ├── cover-4x3.jpg            ← center crop of cover.jpg
+    ├── cover-4x3.jpg            ← subject-aware left/center/right crop of cover.jpg
     ├── preview.mp4
     └── final.mp4
 ```
@@ -475,7 +475,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 9. **检索并下载 BGM**：按 §混音规范从 **YouTube 或 Bilibili** 找到与产品/作品相关的现成 OST 或 BGM 并下载音频。禁止用 AI 或本地合成生成 BGM。
 10. **混音**：对无字幕的视觉成片运行 `python helpers/mix_ad_audio.py <visual.mp4> <narration.mp3> <bgm.mp3> -o <mixed.mp4>`。该 helper 固定执行人声 -13 LUFS、BGM -27 LUFS、BGM 首尾淡化、无自动闪避与防削波；不得再对 `mixed.mp4` 做整轨 loudnorm。混音长度跟画面走，故画面必须先对齐口播，否则人声会被裁切。
 11. **烧录字幕**：最后执行，按 §字幕规范。字幕必须烧录到 `mixed.mp4` 上；不得先烧字幕再混音，也不得在烧录后用 `render.py` 的默认整轨 loudnorm 覆盖分轨响度。
-12. **自检交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；`ffprobe` 对照画面与口播时长（允许转场取整误差，不得差出一整句）。若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 §对外文本禁词检查口播、字幕、标题、简介、封面文字和标签。最终交付是一个不可拆分的套件：`final.mp4`、按 §B站标题交付规范生成的 **1 个**标题、以及按 `skills/bili-cover/SKILL.md` 生成的 **16:9 + 4:3 两张封面**（4:3 由 16:9 正中裁出，禁止另生成一张）和完整提示词；任何一项缺失均不得宣告任务完成。
+12. **自检交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；`ffprobe` 对照画面与口播时长（允许转场取整误差，不得差出一整句）。若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 §对外文本禁词检查口播、字幕、标题、简介、封面文字和标签。最终交付是一个不可拆分的套件：`final.mp4`、按 §B站标题交付规范生成的 **1 个**标题、以及按 `skills/bili-cover/SKILL.md` 生成的 **16:9 + 4:3 两张封面**（4:3 从 16:9 按主体安全区选择左/中/右裁出；漫展宣传图跳过生图）和完整提示词；任何一项缺失均不得宣告任务完成。
 
 ### 静图分拣（硬性）
 
@@ -614,7 +614,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 ### B站封面交付规范
 
-最终视频交付时，必须同时输出 **2 张** B站封面和 **1 段实际使用的封面提示词**。只生成一张 16:9，再正中裁 4:3：`edit/cover.jpg`、`edit/cover-4x3.jpg`。禁止为 4:3 再跑生图。4:3 里必须完整看清商品主体和艺术字；标题可放在商品正前方、左侧、右侧或上方，但不得遮挡商品。规范见 **`skills/bili-cover/SKILL.md`**。画面文字受 §对外文本禁词约束；生图 prompt 可用「封面」。投稿 biliup `--cover` + `--cover43`。
+最终视频交付时，必须同时输出 **2 张** B站封面；商品模式再输出 **1 段实际使用的封面提示词**，漫展宣传图模式注明“使用官方宣传图，未调用生图”。商品模式只生成一张 16:9，再按主体安全区选择左/中/右裁出 4:3：`edit/cover.jpg`、`edit/cover-4x3.jpg`。禁止为 4:3 再跑生图。4:3 里必须清晰看见主体和艺术字；长手办不要求全身，但不得失去脸部、轮廓或关键卖点。规范见 **`skills/bili-cover/SKILL.md`**。画面文字受 §对外文本禁词约束；生图 prompt 可用「封面」。投稿 biliup `--cover` + `--cover43`。
 
 ### 示例
 
