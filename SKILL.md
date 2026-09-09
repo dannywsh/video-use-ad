@@ -455,7 +455,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 | 参数 | 占位 | 说明 |
 |------|------|------|
-| 产品名称 | `<产品名称>` | 文案与画面围绕的产品 |
+| 商品 ID/链接 | `<商品 ID 或 URL>` | 先交给 `biliup goods search`，不凭商品名猜测商品 |
 | 成片时长 | `<时长>` | 只从用户提示词读取；缺失时追问，不默认任何时长 |
 | 素材文件夹 | `<文件夹路径>` | 商品图片、效果图所在目录 |
 | 参考声音 | `<.mp3>` | Fish Audio 声音克隆参考音频（建议 ≥10 秒、干净单人声） |
@@ -464,17 +464,18 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 ### 执行流程
 
-1. **清点素材（静图分拣在文案之前）**：`ffprobe` 检查视频素材。静图必须按 §静图分拣 跑 `inventory_stills.py`、看原图和长图 y 刻度总览、只对上镜栏目裁窗并看裁图、写入 `edit/stills_inventory.md`。先定上镜 / 只取信息 / 弃用，再写口播。文字多的图可以不上镜，但其中的重点信息仍可进口播和字幕。
-2. **评估并按需收集视频素材**：先依据静图分拣结果判断是否需要外部动态画面。它只能承担一个明确任务：建立作品世界观、在角色/设定转换时提供承接，或在连续静态画面后重置节奏；若没有能完成该任务的官方镜头，或它会遮蔽商品细节，就不使用。相关动漫、游戏的官方 OP / ED / Trailer 可从 **YouTube 或 Bilibili** 下载，两个来源平级：YouTube 用 `yt-dlp` 检索并下载视频；Bilibili 先用 `python helpers/bilibili_src.py search "<关键词>" --n 5` 找到 BV 号，再运行 `python helpers/bilibili_src.py check-watermark <BVid>`，未命中水印后必须用 `python helpers/bilibili_src.py download <BVid> --video-out <输出路径>` 下载**视频画面**（需要时加 `--cookies-from-browser <browser>`），而非只下载音频。仅当素材来自 Bilibili 时需要该水印检查；YouTube/其他平台来源的视频无需水印检测。若选择视频，记录其来源、源时间码、计划插入的口播语义点；成片输出时间窗等第 6 步转写后再填，不为凑数量下载或插入。
-3. **检索设定**：在 <https://zh.moegirl.org.cn/> 查找产品相关动漫设定与梗，供文案使用。
-4. **撰写文案**：按 §文案规范 起草口播文案。上镜镜头对应保留窗口；密字图里抽出的重点写进口播（字幕随口播），画面改用其他上镜素材。判定为弃用的条目两端都不进。
-5. **确认方案**：把文案 + 素材搭配展示给用户，确认后再制作（文案是创作性产物，先确认避免返工）。必须附上静图分拣表（上镜 / 只取信息 / 弃用，含理由）；上镜的长图写出 `--region`。搭配只钉「哪句对哪张图 / 哪一窗」，不要把估出来的秒数当成最终镜头时长。若选择了动态视频，标明它服务的口播语义点；输出时间窗等 TTS 转写后再填。若未选择，说明商品图如何独立完成节奏。不能只列 BGM 或下载链接。
-6. **TTS 配音（画面之前）**：按 §Voiceover / TTS 生成**整段**口播，不要按句多次合成。立刻 `python helpers/transcribe.py <口播音频> --edit-dir <edit> --provider paraformer`。用这份词级转写，把确认方案里的每一句口播映射到时间窗：镜头 `i` 从该句第一个字的 `start` 起，到下一句第一个字的 `start` 止（最后一句到音频结尾）。句间停顿并入当前镜头，使各镜 `--duration` 之和等于口播 `ffprobe` 时长。禁止用手估秒数渲画面。后续字幕复用这份转写缓存，音频未改不得重跑。
-7. **合成视频**：按上一步的时间窗渲染画面（`stable_motion.py --duration`、OP/ED 裁切都用该窗）。动态视频仅在其计划的语义点实际进入时间轴，不得作为与口播无关的固定装饰。商品静图与穿插视频之间必须用 `helpers/transitions.py` 做画面转场，禁止 `-c copy` 硬切拼接。转场默认 `--keep-duration`，画面总长必须仍等于口播时长。
-8. **检索并下载 BGM**：按 §混音规范 从 **YouTube 或 Bilibili** 找到与产品/作品相关的现成 OST 或 BGM 并下载音频。禁止用 AI 或本地合成生成 BGM。
-9. **混音**：对无字幕的视觉成片运行 `python helpers/mix_ad_audio.py <visual.mp4> <narration.mp3> <bgm.mp3> -o <mixed.mp4>`。该 helper 固定执行人声 -13 LUFS、BGM -27 LUFS、BGM 首尾淡化、无自动闪避与防削波；不得再对 `mixed.mp4` 做整轨 loudnorm。混音长度跟画面走，故画面必须先对齐口播，否则人声会被裁切。
-10. **烧录字幕**：最后执行，按 §字幕规范。字幕必须烧录到 `mixed.mp4` 上；不得先烧字幕再混音，也不得在烧录后用 `render.py` 的默认整轨 loudnorm 覆盖分轨响度。
-11. **自检交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；`ffprobe` 对照画面与口播时长（允许转场取整误差，不得差出一整句）。若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 §对外文本禁词 检查口播、字幕、标题、简介、封面文字和标签。最终交付是一个不可拆分的套件：`final.mp4`、按 §B站标题交付规范生成的 **1 个** 标题、以及按 `skills/bili-cover/SKILL.md` 生成的 **16:9 + 4:3 两张封面**（4:3 由 16:9 正中裁出，禁止另生成一张）和完整提示词；任何一项缺失均不得宣告任务完成。
+1. **先采集商品事实**：必须使用 `biliup goods search`，不要先凭商品名或图片文件名写文案。推荐运行：`python helpers/biliup_goods.py <商品 ID 或 URL> --cookie <cookies.json> --output <videos_dir>/edit/product_info.json`。该 helper 只负责调用 biliup 并保存 JSON，不复制商品接口逻辑；需要指定 Release 二进制时加 `--biliup-bin <绝对路径>`。核对返回的 `itemId`、`goodsName`、`detail.kind` 和 `detail` 字段；会员购优先使用品牌、分类、属性、价格、图片和摘要，票务优先使用城市、场馆、日期、票价、商家和简介。商品事实以这个 JSON 为准，无法从中得到的卖点不得写入文案。
+2. **清点素材（静图分拣在文案之前）**：`ffprobe` 检查视频素材。静图必须按 §静图分拣 跑 `inventory_stills.py`、看原图和长图 y 刻度总览、只对上镜栏目裁窗并看裁图、写入 `edit/stills_inventory.md`。将 `product_info.json` 的图片/属性与本地素材逐项对照；先定上镜 / 只取信息 / 弃用，再写口播。文字多的图可以不上镜，但其中的重点信息仍可进口播和字幕。
+3. **评估并按需收集视频素材**：先依据静图分拣结果判断是否需要外部动态画面。它只能承担一个明确任务：建立作品世界观、在角色/设定转换时提供承接，或在连续静态画面后重置节奏；若没有能完成该任务的官方镜头，或它会遮蔽商品细节，就不使用。相关动漫、游戏的官方 OP / ED / Trailer 可从 **YouTube 或 Bilibili** 下载，两个来源平级：YouTube 用 `yt-dlp` 检索并下载视频；Bilibili 先用 `python helpers/bilibili_src.py search "<关键词>" --n 5` 找到 BV 号，再运行 `python helpers/bilibili_src.py check-watermark <BVid>`，未命中水印后必须用 `python helpers/bilibili_src.py download <BVid> --video-out <输出路径>` 下载**视频画面**（需要时加 `--cookies-from-browser <browser>`），而非只下载音频。仅当素材来自 Bilibili 时需要该水印检查；YouTube/其他平台来源的视频无需水印检测。若选择视频，记录其来源、源时间码、计划插入的口播语义点；成片输出时间窗等第 7 步转写后再填，不为凑数量下载或插入。
+4. **检索设定**：在 <https://zh.moegirl.org.cn/> 查找产品相关动漫设定与梗，供文案使用；设定只能补充世界观，不能替代 `product_info.json` 的商品事实。
+5. **撰写文案**：按 §文案规范起草口播文案。先用 `product_info.json` 的 `detail.summary` 建立事实清单，再将上镜镜头对应保留窗口；密字图里抽出的重点写进口播（字幕随口播），画面改用其他上镜素材。判定为弃用的条目两端都不进。
+6. **确认方案**：把文案 + 素材搭配展示给用户，确认后再制作（文案是创作性产物，先确认避免返工）。必须附上静图分拣表（上镜 / 只取信息 / 弃用，含理由）；上镜的长图写出 `--region`。搭配只钉「哪句对哪张图 / 哪一窗」，不要把估出来的秒数当成最终镜头时长。若选择了动态视频，标明它服务的口播语义点；输出时间窗等第 7 步转写后再填。若未选择，说明商品图如何独立完成节奏。不能只列 BGM 或下载链接。
+7. **TTS 配音（画面之前）**：按 §Voiceover / TTS 生成**整段**口播，不要按句多次合成。立刻 `python helpers/transcribe.py <口播音频> --edit-dir <edit> --provider paraformer`。用这份词级转写，把确认方案里的每一句口播映射到时间窗：镜头 `i` 从该句第一个字的 `start` 起，到下一句第一个字的 `start` 止（最后一句到音频结尾）。句间停顿并入当前镜头，使各镜 `--duration` 之和等于口播 `ffprobe` 时长。禁止用手估秒数渲画面。后续字幕复用这份转写缓存，音频未改不得重跑。
+8. **合成视频**：按上一步的时间窗渲染画面（`stable_motion.py --duration`、OP/ED 裁切都用该窗）。动态视频仅在其计划的语义点实际进入时间轴，不得作为与口播无关的固定装饰。商品静图与穿插视频之间必须用 `helpers/transitions.py` 做画面转场，禁止 `-c copy` 硬切拼接。转场默认 `--keep-duration`，画面总长必须仍等于口播时长。
+9. **检索并下载 BGM**：按 §混音规范从 **YouTube 或 Bilibili** 找到与产品/作品相关的现成 OST 或 BGM 并下载音频。禁止用 AI 或本地合成生成 BGM。
+10. **混音**：对无字幕的视觉成片运行 `python helpers/mix_ad_audio.py <visual.mp4> <narration.mp3> <bgm.mp3> -o <mixed.mp4>`。该 helper 固定执行人声 -13 LUFS、BGM -27 LUFS、BGM 首尾淡化、无自动闪避与防削波；不得再对 `mixed.mp4` 做整轨 loudnorm。混音长度跟画面走，故画面必须先对齐口播，否则人声会被裁切。
+11. **烧录字幕**：最后执行，按 §字幕规范。字幕必须烧录到 `mixed.mp4` 上；不得先烧字幕再混音，也不得在烧录后用 `render.py` 的默认整轨 loudnorm 覆盖分轨响度。
+12. **自检交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；`ffprobe` 对照画面与口播时长（允许转场取整误差，不得差出一整句）。若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 §对外文本禁词检查口播、字幕、标题、简介、封面文字和标签。最终交付是一个不可拆分的套件：`final.mp4`、按 §B站标题交付规范生成的 **1 个**标题、以及按 `skills/bili-cover/SKILL.md` 生成的 **16:9 + 4:3 两张封面**（4:3 由 16:9 正中裁出，禁止另生成一张）和完整提示词；任何一项缺失均不得宣告任务完成。
 
 ### 静图分拣（硬性）
 

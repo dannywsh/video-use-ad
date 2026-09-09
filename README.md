@@ -205,6 +205,18 @@ MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，�
 
 完整规格见 [`SKILL.md`](./SKILL.md) 的 **Bilibili product promo** 一节。
 
+### 商品信息采集
+
+宣传片流程的第一步必须调用 biliup 的商品搜索，商品名称、价格、属性、图片和票务信息以返回的 JSON 为准：
+
+```bash
+python helpers/biliup_goods.py 13666878 \
+  --cookie /absolute/path/cookies.json \
+  --output /absolute/path/videos/edit/product_info.json
+```
+
+如果 `biliup` 不在 `PATH`，添加 `--biliup-bin /absolute/path/biliup`。`product_info.json` 是当前任务的事实来源；脚本不能从文件名或图片猜测商品卖点。
+
 ## 设计原则
 
 1. **文本为主，视觉按需。** 不倾倒帧数据，转录是核心界面。
