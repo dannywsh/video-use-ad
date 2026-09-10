@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -48,8 +49,17 @@ def fetch_goods(source: str, cookie: str, binary: str) -> list[dict]:
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()
         raise RuntimeError(f"biliup goods search 失败（退出码 {completed.returncode}）：{detail}")
+    # biliup 会在 stdout 先打印带 ANSI 颜色的 INFO 日志行（例如 "user: xxx"），再输出 JSON。
+    # 必须先剥掉 ANSI 转义（否则会命中 \x1b[2m 里的 "["），再从第一个 JSON 起始字符解析。
+    stdout = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", completed.stdout)
+    start = min(
+        (pos for pos in (stdout.find("["), stdout.find("{")) if pos != -1),
+        default=-1,
+    )
+    if start == -1:
+        raise RuntimeError("biliup goods search 没有返回有效 JSON")
     try:
-        result = json.loads(completed.stdout)
+        result = json.loads(stdout[start:])
     except json.JSONDecodeError as exc:
         raise RuntimeError("biliup goods search 没有返回有效 JSON") from exc
     if not isinstance(result, list) or not result:
