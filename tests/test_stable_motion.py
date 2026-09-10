@@ -41,6 +41,23 @@ class ScrollWindowTests(unittest.TestCase):
         self.assertGreater(window.hold_s, 4.0)
         self.assertLess(window.scroll_s, window.hold_s)
 
+    def test_slightly_tall_image_stays_full_height_without_scroll(self):
+        window = S.compute_scroll_window(1000, 700, 3840, 2160, 7.0)
+
+        self.assertFalse(window.can_scroll)
+        self.assertEqual(window.crop_h, 700)
+        self.assertEqual(window.scroll_s, 0.0)
+        self.assertEqual(window.hold_s, 7.0)
+
+    def test_meaningfully_tall_image_still_scrolls(self):
+        window = S.compute_scroll_window(1000, 720, 3840, 2160, 7.0)
+
+        self.assertTrue(window.can_scroll)
+        self.assertGreater(
+            window.viewport_heights - 1,
+            S.MIN_SCROLL_TRAVEL_VIEWPORTS,
+        )
+
     def test_region_then_anchor_bottom(self):
         window = S.compute_scroll_window(
             1000, 3266, 3840, 2160, 6.0, region=(0.2, 0.9), anchor="bottom",
@@ -75,6 +92,29 @@ class ScrollWindowTests(unittest.TestCase):
         term = f"{pps:.6f}*t"
         self.assertIn(term, slow)
         self.assertIn(term, long)
+
+
+class RenderProfileTests(unittest.TestCase):
+    def test_macos_uses_reduced_supersampling_and_videotoolbox(self):
+        profile = S.render_profile("Darwin")
+
+        self.assertEqual(profile.supersample, S.MACOS_SUPERSAMPLE)
+        self.assertEqual(
+            S.encoder_args(profile, 17),
+            ["-c:v", "h264_videotoolbox", "-b:v", S.MACOS_VIDEO_BITRATE],
+        )
+
+    def test_non_macos_retains_x264_and_two_times_supersampling(self):
+        profile = S.render_profile("Linux")
+
+        self.assertEqual(profile.supersample, S.DEFAULT_SUPERSAMPLE)
+        self.assertEqual(
+            S.encoder_args(profile, 17),
+            ["-c:v", "libx264", "-crf", "17", "-preset", "medium"],
+        )
+
+    def test_push_foreground_reaches_viewport_height_at_max_zoom(self):
+        self.assertAlmostEqual(S.PUSH_FOREGROUND_SCALE * S.PUSH_MAX_ZOOM, 1.0)
 
 
 class ProbeCliTests(unittest.TestCase):
