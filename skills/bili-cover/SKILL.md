@@ -27,7 +27,7 @@ Write `<videos_dir>/edit/cover.jpg` (16:9) and `<videos_dir>/edit/cover-4x3.jpg`
   - *Interlock* — type and product woven through each other, either one over the other.
   The frame is filled with no empty margins.
 - Model paints all type (glyphs, stroke, shadow, layout) in the same call.
-- Confirmed copy only: main title (usually 4–10 chars) and optional subtitle (6–14). Style the type in the **product's own visual language** — same palette, same material feel, plus small motifs echoing the IP where they fit. High contrast, readable at thumbnail size.
+- Confirmed copy only, and **keep it short**: main title **4–8 chars**, optional subtitle **4–8 chars**, both lines together **under 14**. Short copy is what buys a large type size — when the copy runs long, cut words rather than shrink the glyphs. Style the type in the **product's own visual language**: same palette, same material feel, plus small motifs echoing the IP where they fit. High contrast, readable at thumbnail size.
 - Clean, low-density background. One focus.
 - Backend order (user-named backend wins): **`native`** → **`gcp-gemini`** → **`ark-seedream`**. Fall through on missing keys, errors, or a result that fails the redo bar below. Aliases: Gemini/Google/Vertex → `gcp-gemini`; Seedream/豆包/方舟 → `ark-seedream`. Do not start at Seedream unless named. Grok: `image_gen` / `image_edit`. Codex: `$imagegen` built-in `image_gen` (not Codex `scripts/image_gen.py`).
 - After a usable 16:9 `cover.jpg`, crop:
@@ -80,9 +80,9 @@ Fill every placeholder. Deliver the filled prompt, not this blank.
 
 构图：<商品> 是主角，够大、清晰可辨——**取景服务于展示效果，不是追求把商品拍全**。能完整放进画面且够大就完整展示；长商品（比如长手办）取主体部分（半身、三分之二或近景）**效果通常更好**：主体更大、观众一眼就能看清，这是主动选择而不是妥协。头部和脸必须在画面内、不被裁切也不被完全盖死。画面尽量填满，四周不留空边。字与商品可以干净分开（字成块占一侧、商品占满另一侧），也可以互相穿插遮挡，由你按画面效果决定——只要两者在同一个画面里构成一套完整的视觉，而不是商品旁边挂一条无关的横幅。背景用干净的 <纯色/柔和渐变/少量光晕>，和商品同色系，低信息密度。
 
-文字：只出现以下内容，逐字准确，由图像模型一次画完（含艺术字、描边、阴影、排版），生成后不得再加字：
-“<主标题，4–10字>”
-“<可选副标题，6–14字>”
+文字：只出现以下内容，逐字准确，由图像模型一次画完（含艺术字、描边、阴影、排版），生成后不得再加字。**字数必须短：主标题 4–8 字，副标题 4–8 字（可省略），两行合计不超过 14 字。** 字少字号才能做得大、缩略图才认得出；文案过长先砍字，不要缩小字号：
+“<主标题，4–8字>”
+“<可选副标题，4–8字>”
 醒目、立体，和商品同色系同风格（渐变填充、厚描边、投影，可点缀呼应 IP 的小装饰）；缩略图里也能认出标题，同时商品的头部、脸和关键细节仍然清楚。
 
 风格：精致商业图，焦点明确，色彩饱满但不刺眼。
