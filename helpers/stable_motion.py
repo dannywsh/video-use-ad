@@ -5,17 +5,65 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import platform
 import subprocess
 import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 
-# 以固定 2× 画布渲染后再下采样，消除慢推镜中的整数像素台阶。
-FIXED_SUPERSAMPLE = 2
+# 非 macOS 以固定 2× 画布渲染后再下采样，消除慢推镜中的整数像素台阶。
+DEFAULT_SUPERSAMPLE = 2
+# macOS 使用 VideoToolbox 硬编码时，以 1.5× 画布平衡慢推镜稳定性与渲染速度。
+MACOS_SUPERSAMPLE = 1.5
+# VideoToolbox 不支持 libx264 的 CRF 质量控制，改用适合 1080p30 静图运动的目标码率。
+MACOS_VIDEO_BITRATE = "16M"
+# 只在内容明显超出一屏时才滚动；较短长图改为整图缓慢推近展示。
+MIN_SCROLL_TRAVEL_VIEWPORTS = 0.15
+# 推镜结束时前景约占满一屏高度：前景初始尺寸乘最大缩放率恰好为 1。
+PUSH_MAX_ZOOM = 1.045
+PUSH_FOREGROUND_SCALE = 1 / PUSH_MAX_ZOOM
+# 长图滚动时保留少量左右空间，避免信息图贴边。
+SCROLL_FOREGROUND_WIDTH_SCALE = 0.92
 # 可读匀速：约 5.5 秒滚过一屏。只按这个速度走；镜头更长就停在末帧，更短就裁窗。
 DEFAULT_SCROLL_VIEWPORTS_PER_SEC = 0.18
 DEFAULT_MAX_VIEWPORTS_PER_SEC = DEFAULT_SCROLL_VIEWPORTS_PER_SEC
+
+
+@dataclass(frozen=True)
+class RenderProfile:
+    """Describe the platform-specific render scale and FFmpeg encoder arguments."""
+
+    supersample: float
+    encoder_args: tuple[str, ...]
+
+
+def render_profile(system_name: str | None = None) -> RenderProfile:
+    """Choose the motion render profile for an operating system.
+
+    Input: optional platform.system() value for deterministic tests. Returns: scale factor and
+    encoder arguments; macOS uses VideoToolbox, other systems retain the x264 CRF workflow.
+    """
+    if (system_name or platform.system()) == "Darwin":
+        return RenderProfile(
+            supersample=MACOS_SUPERSAMPLE,
+            encoder_args=("-c:v", "h264_videotoolbox", "-b:v", MACOS_VIDEO_BITRATE),
+        )
+    return RenderProfile(
+        supersample=DEFAULT_SUPERSAMPLE,
+        encoder_args=("-c:v", "libx264", "-crf"),
+    )
+
+
+def encoder_args(profile: RenderProfile, crf: int) -> list[str]:
+    """Build complete encoder arguments from a render profile.
+
+    Input: selected platform profile and requested x264 CRF. Returns: FFmpeg encoder arguments;
+    CRF applies only to the retained non-macOS x264 path.
+    """
+    if profile.encoder_args[1] == "libx264":
+        return [*profile.encoder_args, str(crf), "-preset", "medium"]
+    return list(profile.encoder_args)
 
 
 def run(command: list[str]) -> None:
@@ -107,6 +155,15 @@ def scroll_overlay_y(travel: int, pixels_per_sec: float) -> str:
     return f"-min({travel}\\, {pixels_per_sec:.6f}*t)"
 
 
+def has_meaningful_scroll(travel: float, render_h: int) -> bool:
+    """Decide whether vertical overflow merits visible scrolling.
+
+    Input: scaled foreground overflow and render height in pixels. Returns: True only when the
+    travel covers at least the configured fraction of one viewport; short images stay full-height.
+    """
+    return travel >= render_h * MIN_SCROLL_TRAVEL_VIEWPORTS
+
+
 def _hold_times(travel: float, render_h: int, duration: float, speed: float) -> tuple[float, float, float]:
     """Return (viewports_per_sec, scroll_s, hold_s) for a constant-speed crawl."""
     if travel <= 1 or speed <= 0 or render_h <= 0:
@@ -130,7 +187,7 @@ def compute_scroll_window(
 ) -> ScrollWindow:
     """Choose a vertical crop that can crawl at a fixed readable speed in `duration`.
 
-    Input: source size, 2× render canvas, shot length, optional 0–1 band and anchor.
+    Input: source size, platform-selected render canvas, shot length, optional 0–1 band and anchor.
     Returns: crop box in source pixels. Too-short bands set can_scroll False (use push).
     Speed is locked: image height and shot duration never change `max_vps`.
     """
@@ -145,13 +202,14 @@ def compute_scroll_window(
     band_y = even_coord(source_h * y0)
     band_h = even(source_h * (y1 - y0))
     band_h = max(2, min(band_h, source_h - band_y))
-    fg_w = even(render_w * 0.92)
+    fg_w = even(render_w * SCROLL_FOREGROUND_WIDTH_SCALE)
     viewport_src = max(2, even(render_h * source_w / fg_w))
     scaled_band_h = even(band_h * fg_w / source_w)
     full_viewports = max(0.0, (scaled_band_h - render_h) / render_h)
     band_viewports = scaled_band_h / render_h if render_h else 0.0
 
-    if scaled_band_h <= render_h:
+    full_travel = scaled_band_h - render_h
+    if scaled_band_h <= render_h or not has_meaningful_scroll(full_travel, render_h):
         crop_h = min(source_h - band_y, max(band_h, viewport_src))
         return ScrollWindow(
             crop_y=band_y,
@@ -168,7 +226,6 @@ def compute_scroll_window(
         )
 
     max_travel = max_vps * duration * render_h
-    full_travel = scaled_band_h - render_h
     if full_travel <= max_travel + 1:
         vps, scroll_s, hold_s = _hold_times(full_travel, render_h, duration, max_vps)
         return ScrollWindow(
@@ -200,7 +257,10 @@ def compute_scroll_window(
     used_top = crop_y / source_h
     used_bot = (crop_y + crop_h) / source_h
     travel = max(0.0, even(crop_h * fg_w / source_w) - render_h)
-    vps, scroll_s, hold_s = _hold_times(travel, render_h, duration, max_vps)
+    if not has_meaningful_scroll(travel, render_h):
+        vps, scroll_s, hold_s = 0.0, 0.0, duration
+    else:
+        vps, scroll_s, hold_s = _hold_times(travel, render_h, duration, max_vps)
     return ScrollWindow(
         crop_y=crop_y,
         crop_h=crop_h,
@@ -210,7 +270,7 @@ def compute_scroll_window(
         viewport_heights=1.0 + full_viewports,
         viewports_per_sec=vps,
         region=(used_top, used_bot),
-        can_scroll=travel > 1,
+        can_scroll=has_meaningful_scroll(travel, render_h),
         scroll_s=scroll_s,
         hold_s=hold_s,
     )
@@ -239,9 +299,11 @@ def crop_source(source: Path, output: Path, crop_y: int, crop_h: int, source_w: 
 def render_push(source: Path, output: Path, duration: float, fps: int, width: int, height: int, crf: int) -> None:
     """Render a centre push-in without per-frame foreground scaling or positioning.
 
-    Input: source image and output video parameters. Returns: None after writing an H.264 MP4 at fixed 2× supersampling.
+    Input: source image and output video parameters. Returns: None after writing an H.264 MP4
+    using the selected platform render profile.
     """
-    render_width, render_height = even(width * FIXED_SUPERSAMPLE), even(height * FIXED_SUPERSAMPLE)
+    profile = render_profile()
+    render_width, render_height = even(width * profile.supersample), even(height * profile.supersample)
     canvas_width, canvas_height = even(render_width * 1.2), even(render_height * 1.2)
     frames = max(2, round(duration * fps))
     with tempfile.TemporaryDirectory(prefix="stable-motion-") as temp_dir:
@@ -251,20 +313,20 @@ def render_push(source: Path, output: Path, duration: float, fps: int, width: in
             f"[0:v]split=2[bgsrc][fgsrc];"
             f"[bgsrc]scale={canvas_width}:{canvas_height}:force_original_aspect_ratio=increase,"
             f"crop={canvas_width}:{canvas_height},boxblur=20:5,eq=brightness=-0.16:saturation=0.85[bg];"
-            f"[fgsrc]format=rgba,scale={even(canvas_width * 0.88)}:{even(canvas_height * 0.88)}:"
+            f"[fgsrc]format=rgba,scale={even(canvas_width * PUSH_FOREGROUND_SCALE)}:{even(canvas_height * PUSH_FOREGROUND_SCALE)}:"
             f"force_original_aspect_ratio=decrease,pad={canvas_width}:{canvas_height}:(ow-iw)/2:(oh-ih)/2:color=black@0[fg];"
             f"[bg][fg]overlay=(W-w)/2:(H-h)/2,format=rgba"
         )
         run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(source), "-filter_complex", base_filter, "-frames:v", "1", str(base)])
         zoom_step = 0.045 / max(1, frames - 1)
         zoom_filter = (
-            f"zoompan=z='min(1+{zoom_step:.10f}*on,1.045)':"
+            f"zoompan=z='min(1+{zoom_step:.10f}*on,{PUSH_MAX_ZOOM})':"
             "x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:"
             f"s={render_width}x{render_height}:fps={fps},scale={width}:{height}:flags=lanczos,format=yuv420p"
         )
         run([
             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-loop", "1", "-framerate", str(fps), "-i", str(base),
-            "-t", f"{duration:.6f}", "-vf", zoom_filter, "-an", "-c:v", "libx264", "-crf", str(crf), "-preset", "medium", "-movflags", "+faststart", str(output),
+            "-t", f"{duration:.6f}", "-vf", zoom_filter, "-an", *encoder_args(profile, crf), "-movflags", "+faststart", str(output),
         ])
 
 
@@ -287,7 +349,8 @@ def render_scroll(
     Returns: the crop window actually used. Falls back to push when the band is not tall.
     """
     source_width, source_height = image_dimensions(source)
-    render_width, render_height = even(width * FIXED_SUPERSAMPLE), even(height * FIXED_SUPERSAMPLE)
+    profile = render_profile()
+    render_width, render_height = even(width * profile.supersample), even(height * profile.supersample)
     window = compute_scroll_window(
         source_width, source_height, render_width, render_height, duration,
         max_vps=max_vps, anchor=anchor, region=region,
@@ -302,7 +365,7 @@ def render_scroll(
             render_push(plate, output, duration, fps, width, height, crf)
             return window
         crop_w, crop_h = image_dimensions(plate)
-        foreground_width = even(render_width * 0.92)
+        foreground_width = even(render_width * SCROLL_FOREGROUND_WIDTH_SCALE)
         foreground_height = even(crop_h * foreground_width / crop_w)
         travel = max(1, foreground_height - render_height)
         pixels_per_sec = locked_scroll_pixels_per_sec(render_height, max_vps)
@@ -316,7 +379,7 @@ def render_scroll(
         run([
             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-loop", "1", "-framerate", str(fps), "-i", str(background),
             "-loop", "1", "-framerate", str(fps), "-i", str(plate), "-t", f"{duration:.6f}",
-            "-filter_complex", filter_complex, "-r", str(fps), "-an", "-c:v", "libx264", "-crf", str(crf), "-preset", "medium", "-movflags", "+faststart", str(output),
+            "-filter_complex", filter_complex, "-r", str(fps), "-an", *encoder_args(profile, crf), "-movflags", "+faststart", str(output),
         ])
     return window
 
@@ -354,7 +417,8 @@ def main() -> None:
     region = parse_region(args.region) if args.region else None
     if args.probe or args.mode == "scroll":
         src_w, src_h = image_dimensions(args.source)
-        render_w, render_h = even(args.width * FIXED_SUPERSAMPLE), even(args.height * FIXED_SUPERSAMPLE)
+        profile = render_profile()
+        render_w, render_h = even(args.width * profile.supersample), even(args.height * profile.supersample)
         window = compute_scroll_window(
             src_w, src_h, render_w, render_h, args.duration,
             max_vps=args.max_viewports_per_sec, anchor=args.anchor, region=region,
@@ -376,8 +440,9 @@ def main() -> None:
         args.source, args.output, args.duration, args.fps, args.width, args.height, args.crf,
         max_vps=args.max_viewports_per_sec, anchor=args.anchor, region=region,
     )
+    motion_kind = "scroll" if window.can_scroll else "full-height push"
     print(
-        f"stable motion → {args.output} (scroll, {args.duration:.2f}s, "
+        f"stable motion → {args.output} ({motion_kind}, {args.duration:.2f}s, "
         f"crop y={window.crop_y} h={window.crop_h}, "
         f"{window.viewports_per_sec:.2f} vp/s, hold {window.hold_s:.2f}s)"
     )
