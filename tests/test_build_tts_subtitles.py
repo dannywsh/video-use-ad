@@ -95,6 +95,47 @@ class CaptionFormattingTests(unittest.TestCase):
         self.assertNotIn("如果觉得太苦就把研磨度调粗一点", "".join(captions))
 
 
+class CueTimelineTests(unittest.TestCase):
+    # "POUR OVER" comes back from ASR as unrelated syllables, so those source
+    # characters are timed by interpolation instead of by a matching word.
+    SCRIPT = "先看水温。POUR OVER 慢速滤杯，再闻香气。"
+    SPOKEN = [
+        ("先", 0.2), ("看", 0.2), ("水", 0.2), ("温", 0.2),
+        ("摸", 0.2), ("啊", 0.2),
+        ("慢", 0.3), ("速", 0.3), ("滤", 0.3), ("杯", 0.3),
+        ("再", 0.3), ("闻", 0.3), ("香", 0.3), ("气", 0.3),
+    ]
+
+    def words(self):
+        out, clock = [], 0.0
+        for text, duration in self.SPOKEN:
+            out.append({"type": "word", "text": text,
+                        "start": round(clock, 3), "end": round(clock + duration, 3)})
+            clock += duration
+        return out
+
+    def cues(self):
+        srt = B.build_srt(self.SCRIPT, self.words(), 18, 8)
+        blocks = [block for block in srt.strip().split("\n\n")]
+        parsed = []
+        for block in blocks:
+            _, times, caption = block.split("\n", 2)
+            start, end = times.split(" --> ")
+            parsed.append((start, end, caption))
+        return parsed
+
+    def test_an_interpolated_run_never_pushes_a_cue_backwards(self):
+        cues = self.cues()
+        self.assertGreater(len(cues), 1)
+        for (_, previous_end, _), (start, _, _) in zip(cues, cues[1:]):
+            self.assertLessEqual(previous_end, start, "two cues would be on screen at once")
+
+    def test_every_cue_keeps_a_usable_duration(self):
+        # SRT timestamps are fixed-width, so lexicographic order is time order.
+        for start, end, _ in self.cues():
+            self.assertLess(start, end)
+
+
 class VerifyTests(unittest.TestCase):
     def test_a_break_inside_a_phrase_is_rejected(self):
         script = "水温偏高，口感会发苦，把研磨度调粗一点就好，或者让水流走得再慢一点。"
