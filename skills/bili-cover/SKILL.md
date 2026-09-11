@@ -30,14 +30,16 @@ Write `<videos_dir>/edit/cover.jpg` (16:9) and `<videos_dir>/edit/cover-4x3.jpg`
 - Confirmed copy only, and **keep it short**: main title **4–8 chars**, optional subtitle **4–8 chars**, both lines together **under 14**. Short copy is what buys a large type size — when the copy runs long, cut words rather than shrink the glyphs. Style the type in the **product's own visual language**: same palette, same material feel, plus small motifs echoing the IP where they fit. High contrast, readable at thumbnail size.
 - Clean, low-density background. One focus.
 - Backend order (user-named backend wins): **`native`** → **`gcp-gemini`** → **`ark-seedream`**. Fall through on missing keys, errors, or a result that fails the redo bar below. Aliases: Gemini/Google/Vertex → `gcp-gemini`; Seedream/豆包/方舟 → `ark-seedream`. Do not start at Seedream unless named. Grok: `image_gen` / `image_edit`. Codex: `$imagegen` built-in `image_gen` (not Codex `scripts/image_gen.py`).
-- After a usable 16:9 `cover.jpg`, crop:
+- After a usable 16:9 `cover.jpg`, have the LLM inspect the finished composition and output one normalized horizontal crop center (`crop_center_x` in `[0,1]`). The point should preserve the product head/face and the most important readable title area; it is not limited to left/center/right. The 4:3 aspect ratio determines the crop width, so one center point is the only crop parameter.
 
 ```bash
 python skills/bili-cover/scripts/crop_cover43.py \
   --input "<videos_dir>/edit/cover.jpg" \
   --output "<videos_dir>/edit/cover-4x3.jpg" \
-  --anchor left  # 根据画面检查结果替换为 center 或 right
+  --crop-center-x 0.60
 ```
+
+`--crop-center-x` is required. The LLM must provide the value after inspecting the actual cover; do not substitute a fixed left/center/right preset.
 
 - Credentials: same lookup as parent TTS (`~/.config/video-use/.env` → leftover skill-root `.env` → cwd `.env` → env). Never print a key. Ask only after lookup fails. `GCP_GEMINI_IMAGE_API_KEY` (model default `gemini-3.1-flash-lite-image`, size `1K`); `ARK_SEEDREAM_API_KEY` (model default `doubao-seedream-5.0-lite`). Optional overrides in `.env.example`.
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Crop a 16:9 Bilibili cover into a 4:3 JPEG with a horizontal anchor.
+"""Crop a 16:9 Bilibili cover into a 4:3 JPEG with an LLM-selected center point.
 
-Do not generate a second 4:3 image. Composition (title placement around a
-subject placement) is the skill's job, not this crop.
+Do not generate a second 4:3 image. The LLM inspects the finished cover and
+provides one normalized horizontal crop-center point, so this script preserves
+the actual title/subject relationship instead of guessing left/center/right.
 """
 
 from __future__ import annotations
@@ -35,25 +36,33 @@ def assert_aspect(
         )
 
 
-def crop_4x3_box(width: int, height: int, anchor: str = "center") -> tuple[int, int, int, int]:
-    """Return a 4:3 rectangle aligned to the left, center, or right."""
+def crop_4x3_box(
+    width: int,
+    height: int,
+    crop_center_x: float,
+) -> tuple[int, int, int, int]:
+    """Return a 4:3 crop box using a continuous normalized horizontal center.
+
+    Args:
+        width: Source image width in pixels.
+        height: Source image height in pixels.
+        crop_center_x: LLM-selected crop center in [0, 1], measured across source width.
+
+    Returns:
+        A pixel crop box in (left, top, right, bottom) format.
+    """
     crop_w = round(height * RATIO_4_3)
     if crop_w <= width:
-        if anchor == "left":
-            left = 0
-        elif anchor == "right":
-            left = width - crop_w
-        else:
-            left = (width - crop_w) // 2
+        if not 0 <= crop_center_x <= 1:
+            raise ValueError("crop_center_x must be between 0 and 1")
+        min_center = crop_w / (2 * width)
+        max_center = 1 - min_center
+        bounded_center = min(max(crop_center_x, min_center), max_center)
+        left = round(bounded_center * width - crop_w / 2)
         return (left, 0, left + crop_w, height)
     crop_h = round(width / RATIO_4_3)
     top = (height - crop_h) // 2
     return (0, top, width, top + crop_h)
-
-
-def center_crop_4x3_box(width: int, height: int) -> tuple[int, int, int, int]:
-    """Backward-compatible wrapper for callers that explicitly need center crop."""
-    return crop_4x3_box(width, height, "center")
 
 
 def default_output_path(source: Path) -> Path:
@@ -62,18 +71,24 @@ def default_output_path(source: Path) -> Path:
     return source.with_name(f"{source.stem}-4x3.jpg")
 
 
-def crop_cover43(source: Path, output: Path, anchor: str = "center") -> dict:
-    """Crop a verified 16:9 cover and report the selected anchor."""
+def crop_cover43(
+    source: Path,
+    output: Path,
+    crop_center_x: float,
+) -> dict:
+    """Crop a verified 16:9 cover using one LLM-selected center point."""
     with Image.open(source) as image:
         rgb = image.convert("RGB")
         width, height = rgb.size
         assert_aspect(width, height, RATIO_16_9, label=str(source))
-        box = crop_4x3_box(width, height, anchor)
+        box = crop_4x3_box(width, height, crop_center_x)
         cropped = rgb.crop(box)
         crop_w, crop_h = cropped.size
         assert_aspect(crop_w, crop_h, RATIO_4_3, label="4:3 crop")
         output.parent.mkdir(parents=True, exist_ok=True)
         cropped.save(output, format="JPEG", quality=95, optimize=True, subsampling=0)
+    # crop_4x3_box clamps into the canvas, so report where the window actually landed.
+    applied_center_x = round((box[0] + crop_w / 2) / width, 4)
     return {
         "success": True,
         "input": str(source),
@@ -81,13 +96,15 @@ def crop_cover43(source: Path, output: Path, anchor: str = "center") -> dict:
         "source": [width, height],
         "crop": [crop_w, crop_h],
         "box": list(box),
-        "anchor": anchor,
+        "crop_center_x": crop_center_x,
+        "applied_center_x": applied_center_x,
+        "decision_source": "llm-point",
     }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Crop a 16:9 Bilibili cover.jpg into a left, center, or right 4:3 JPEG."
+        description="Crop a 16:9 Bilibili cover.jpg using one LLM-selected center point."
     )
     parser.add_argument("--input", required=True, help="Verified 16:9 cover.jpg")
     parser.add_argument(
@@ -96,17 +113,17 @@ def main() -> None:
         help="4:3 JPEG path. Default: cover-4x3.jpg next to --input.",
     )
     parser.add_argument(
-        "--anchor",
-        choices=("left", "center", "right"),
-        default="center",
-        help="Horizontal crop anchor; choose after inspecting the subject/title layout.",
+        "--crop-center-x",
+        type=float,
+        required=True,
+        help="Required LLM-selected normalized crop center, 0.0=left edge and 1.0=right edge.",
     )
     args = parser.parse_args()
     source = Path(args.input)
     if not source.is_file():
         raise SystemExit(f"missing cover: {source}")
     output = Path(args.output) if args.output else default_output_path(source)
-    result = crop_cover43(source, output, args.anchor)
+    result = crop_cover43(source, output, args.crop_center_x)
     json.dump(result, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
 
