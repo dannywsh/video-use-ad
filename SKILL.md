@@ -577,18 +577,19 @@ Numeric specs here are production standards, not taste. Override only when the u
 
   ```bash
   python helpers/transcribe.py <最终口播音频> --edit-dir <edit> --provider paraformer
-  python helpers/build_tts_subtitles.py <最终送入TTS的文案文件> <最终音频的词级转写JSON> -o <master.srt> --max-chars 24
-  python helpers/verify_tts_subtitles.py <最终送入TTS的文案文件> <master.srt> --max-chars 24
+  python helpers/build_tts_subtitles.py <最终送入TTS的文案文件> <最终音频的词级转写JSON> -o <master.srt> --max-chars 18 --min-chars 8
+  python helpers/verify_tts_subtitles.py <最终送入TTS的文案文件> <master.srt> --max-chars 18
   python helpers/ad_subtitles.py <mixed.mp4> <master.srt> -o <final.mp4> --primary-colour <ASS颜色>
   ```
 
   口播转写在第 6 步已完成；音频未改则直接复用 `transcripts/` 缓存，禁止重跑。广告流程禁止对 TTS 成片使用 `render.py --build-subtitles`，该路径会采用 ASR 文本。`verify_tts_subtitles.py` 失败即禁止烧录（Hard Rule 13）。
 - **锁定样式（1080p 基准，按成片高度缩放）**：Hiragino Sans GB W6，`FontSize=72`，`Spacing=1`，`Outline=3`（四周细描边），`Shadow=0`，`WrapStyle=2`，`MarginV=8`，左右 `MarginL/R=64`。烧录时必须同时带上 `PlayResX=<视频宽>` 和 `PlayResY=<视频高>`；720p / 4K 由 helper 自动缩放，不要手填。Linux 或未安装冬青黑体时，只允许把 `FontName` 换成 `Noto Sans SC`。
-- **单行（硬性）**：每条字幕必须只有一行。`--max-chars 24` 按语义切分，超长子句由脚本硬切，禁止一条里出现换行。烧录用 `WrapStyle=2`，即使文本偏长也不许折成两行。
+- **单行（硬性）**：每条字幕必须只有一行。`--max-chars 18` 按**语义断句**切分：断点只允许落在句读标点（`。！？；` 必断，`，、` 优先断）之后，字幕永远不会在一句话中间被裁断；只有当单个分句自身超过 18 字时，才在拉丁/中文边界或空格处退让硬切。`--min-chars 8` 用于把过短的尾句前移，避免出现「孤字行」。禁止一条里出现换行。烧录用 `WrapStyle=2`，即使文本偏长也不许折成两行。
+- **断句验收**：`verify_tts_subtitles.py` 除文本等价、单行、字数上限外，还会校验**每个断点都必须落在分句边界上**（单分句超长导致的硬切除外），并打印行长分布。断点跑偏即失败，禁止烧录。
 - **颜色与对比度**：默认白色 `&H00FFFFFF`。若产品有指定高亮色，用 `--primary-colour` 覆盖，必须仍是高亮度浅色；禁止低亮度或接近画面暗部的颜色。抽查首帧、中段、尾帧确认可读。粉色 `&H00FF8FCF` 只是可选强调色，不是默认字幕色。
 - **特效**：只用四周细描边；**不使用**底框、投影阴影、弹跳或花哨特效。
 - **烧录顺序**：必须在所有画面、转场和叠加层完成后**最后烧录**，确保始终位于最上层不被遮挡（Hard Rule 1）。
-- **文字**：字幕文字必须逐字采用最终送入 TTS 的口播文案，且顺序完全一致。句读标点（。！？；，、）换成空格后，中文汉字之间的多余空格由脚本去掉；分数线 `/`、小数点、百分号、比例冒号等量化符号必须原样保留（「1/7」不得变成「1 7」）。字距只由 `Spacing=1` 控制。不得根据 ASR 文本改写、纠错、概括、删减或补写字幕。
+- **文字**：字幕文字必须逐字采用最终送入 TTS 的口播文案，且顺序完全一致。标点处理分两类：**句末标点（`。！？；`）与其后的换行直接删除**（那里已经断行）；**句读标点（`，、`）保留为一个可见空格**——即使整句没超行长、没有断行，观众也要能在屏幕上看到念到哪停顿了。**不得**再把中文汉字之间的空格去掉，那会让整句糊成一串。分数线 `/`、小数点、百分号、比例冒号等量化符号必须原样保留（「1/7」不得变成「1 7」）。字距只由 `Spacing=1` 控制。不得根据 ASR 文本改写、纠错、概括、删减或补写字幕。
 - 每条字幕时长与文案自然停顿对齐，不手估时间。ASR/强制对齐**只用于取得最终音频的词级时间戳**。
 
 ### B站投稿简介规范

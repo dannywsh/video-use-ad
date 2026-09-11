@@ -19,7 +19,11 @@ AD_SHADOW = 0
 AD_MARGIN_V = 8
 AD_MARGIN_X = 64
 AD_WRAP_STYLE = 2
-AD_MAX_CHARS = 24
+# Measured against a rendered 1080p master (Hiragino Sans GB, FontSize 72,
+# Spacing 1): one CJK glyph inks about 59 px and a clause space about 21 px, so
+# 18 glyphs span ~55% of the frame width and 24 span ~74%. 24 read as a wall of
+# text and left no headroom for the visible spaces clause marks now produce.
+AD_MAX_CHARS = 18
 AD_DEFAULT_PRIMARY = "&H00FFFFFF"
 AD_OUTLINE_COLOUR = "&H00201828"
 
