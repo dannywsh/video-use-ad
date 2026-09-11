@@ -273,7 +273,8 @@ def build_srt(
     """Create a verbatim-script SRT using ASR timestamps only.
 
     Input: final TTS script, word-level ASR words and caption length limits.
-    Returns: complete UTF-8 SRT content with one semantic line per cue.
+    Returns: complete UTF-8 SRT content with one semantic line per cue, never with
+    two cues on screen at the same time.
     """
     spoken_words = [
         word
@@ -286,6 +287,7 @@ def build_srt(
     source_normalized, mapping = source_to_asr_positions(script, spoken_words)
     chunks = build_caption_chunks(script, maximum_characters, minimum_characters)
     cursor = 0
+    previous_end = 0.0
     lines: list[str] = []
     for number, chunk in enumerate(chunks, 1):
         normalized = normalized_characters(chunk)
@@ -293,8 +295,23 @@ def build_srt(
         end_source = cursor + len(normalized) - 1
         start_asr = mapping[start_source]
         end_asr = mapping[end_source]
-        start_word = spoken_words[asr_char_to_word[start_asr]]
-        end_word = spoken_words[asr_char_to_word[end_asr]]
+        start_index = asr_char_to_word[start_asr]
+        end_index = asr_char_to_word[end_asr]
+        # An unmatched run of source characters (a brand name the ASR renders as
+        # unrelated syllables) is timed by interpolating between its neighbours.
+        # That interpolation can land back inside the previous cue, which would
+        # draw two captions on top of each other; walk forward to the first word
+        # that actually starts after it instead.
+        while (
+            start_index < end_index
+            and float(spoken_words[start_index]["start"]) < previous_end - 1e-3
+        ):
+            start_index += 1
+        start_word = spoken_words[start_index]
+        end_word = spoken_words[end_index]
+        start_time = max(float(start_word["start"]), previous_end)
+        end_time = max(float(end_word["end"]), start_time + 0.2)
+        previous_end = end_time
         caption = format_caption_text(chunk)
         if "\n" in caption:
             raise ValueError("caption cue contains a line break; ad subtitles must stay one line")
@@ -303,7 +320,7 @@ def build_srt(
         lines.extend(
             [
                 str(number),
-                f"{srt_timestamp(float(start_word['start']))} --> {srt_timestamp(float(end_word['end']))}",
+                f"{srt_timestamp(start_time)} --> {srt_timestamp(end_time)}",
                 caption,
                 "",
             ]
