@@ -31,6 +31,9 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Local agent workspace data (memory notes, logs — not source)
+.workbuddy/
+
 # Node / Remotion (installed on demand, not vendored)
 node_modules/
 package-lock.json
