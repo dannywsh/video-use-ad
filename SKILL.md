@@ -28,7 +28,7 @@ description: >
 Pick one at session start. Do not blend the two recipes.
 
 - **General edit** (default). Existing footage: talking heads, interviews, tutorials, travel, montages. Artistic freedom except Hard Rules. Follow The process.
-- **Bilibili product promo.** Triggers: 宣传广告视频, 广告视频, 云逛视频, ACG 宣传, 商品宣传视频, 产品宣传片, or a Bilibili product video from stills + cloned voice. Then §Bilibili product promo is a **hard recipe** — numeric specs are mandatory unless the user overrides. Runtime is whatever the user wrote in the prompt; do not assume a length. Hard Rules still apply. Do not substitute general subtitle/mix taste examples for the locked promo path.
+- **Bilibili product promo.** Triggers: 宣传广告视频, 广告视频, 云逛视频, ACG 宣传, 商品宣传视频, 产品宣传片, or a Bilibili product video from stills + cloned voice. Then §Bilibili product promo is a **hard recipe** — the narrative centers on the product/character itself, its visual traits, setting, atmosphere, and audience appeal. Do not turn ordinary goods into a specification list; technical parameters may be central only for digital/electronic or other function-led products, and price is omitted from outward copy by default. Runtime is whatever the user wrote in the prompt; do not assume a length. Hard Rules still apply. Do not substitute general subtitle/mix taste examples for the locked promo path.
 
 ## Hard Rules (production correctness — non-negotiable)
 
@@ -439,7 +439,7 @@ Things that consistently fail regardless of style:
 
 ## Bilibili product promo (hard recipe)
 
-Numeric specs here are production standards, not taste. Override only when the user explicitly asks. Hard Rules still apply. Credential lookup is §Setup. TTS CLI is §Voiceover / TTS (default Fish Audio; strip §对外文本禁词 from `--extra_params`; write files to `<videos_dir>/edit/voiceover/`).
+The rules here are production standards, not taste. For ordinary goods, product/character setting and visible appeal take priority over numeric specifications; digital/electronic products may focus on supported technical parameters. Price is excluded from outward copy by default. Override only when the user explicitly asks. Hard Rules still apply. Credential lookup is §Setup. TTS CLI is §Voiceover / TTS (default Fish Audio; strip §对外文本禁词 from `--extra_params`; write files to `<videos_dir>/edit/voiceover/`).
 
 ### 对外文本禁词（硬性）
 
@@ -448,6 +448,14 @@ Numeric specs here are production standards, not taste. Override only when the u
 禁止出现：云逛、口播、混剪、资讯、宣传片、广告、配方、提示词、BGM、字幕、封面。
 
 这些词只留在本技能的内部说明里，不得写进任何将要发布或给观众看的句子（含封面画面上要画出来的文案）。送入 TTS 的口播文案同样不得使用上述禁词。发给图像模型的**生成提示词可以用「封面」**等内部用语；禁词约束的是画面文字，不是生图 prompt。
+
+### 内容重心（用户偏好硬规则）
+
+- **先讲商品/人物，再讲字段**：主叙事必须围绕商品本身或其中的角色展开，优先写外观、姿态、表情、服装、材质表现、气质、世界观关系和能被画面证明的设定。`product_info.json` 是事实来源，但不是逐项播报清单；事实清单中的字段不必全部进入口播。
+- **普通商品不做参数罗列**：手办、周边、服装、票务等非功能型商品，以角色设定、作品语境和视觉卖点为主；只有在帮助观众理解比例、大小或外观时，才点到少量必要规格，不连续堆叠参数。数码电子等功能型产品，才可以把功能、性能和参数作为主要卖点，并且必须有商品事实支撑。
+- **价格默认不出现在对外文本**：除非用户明确要求，价格不得写入口播、烧录字幕、标题、投稿简介、封面画面文字或标签。价格只可作为后台核验字段。不要用“低价”“划算”等价格替代表述制造购买承诺。
+- **结尾引导了解详情**：在不使用对外文本禁词的前提下，可用自然的一句引导观众点击商品链接了解完整信息；不要在视频里替观众把价格或商品详情全部讲完。
+- **写作自测**：若删掉数字和字段后，普通商品的文案反而更像角色/商品介绍，就删掉这些数字和字段；若文案连续列出多个规格而没有对应画面或叙事作用，必须重写。
 
 ### 输入参数
 
@@ -464,9 +472,9 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 ### 执行流程
 
-1. **先采集商品事实**：必须使用 `biliup goods search`，不要先凭商品名或图片文件名写文案。推荐运行：`python helpers/biliup_goods.py <商品 ID 或 URL> --cookie <cookies.json> --output <videos_dir>/edit/product_info.json`。该 helper 只负责调用 biliup 并保存 JSON，不复制商品接口逻辑；需要指定 Release 二进制时加 `--biliup-bin <绝对路径>`。核对返回的 `itemId`、`goodsName`、`detail.kind` 和 `detail` 字段；会员购优先使用品牌、分类、属性、价格、图片和摘要，票务优先使用城市、场馆、日期、票价、商家和简介。商品事实以这个 JSON 为准，无法从中得到的卖点不得写入文案。
+1. **先采集商品事实**：必须使用 `biliup goods search`，不要先凭商品名或图片文件名写文案。推荐运行：`python helpers/biliup_goods.py <商品 ID 或 URL> --cookie <cookies.json> --output <videos_dir>/edit/product_info.json`。该 helper 只负责调用 biliup 并保存 JSON，不复制商品接口逻辑；需要指定 Release 二进制时加 `--biliup-bin <绝对路径>`。核对返回的 `itemId`、`goodsName`、`detail.kind` 和 `detail` 字段；会员购优先提取品牌、分类、角色/IP、属性、图片和摘要，票务优先提取城市、场馆、日期、商家和简介。价格/票价仅作后台核验字段，除非用户明确要求不得进入任何对外文本。商品事实以这个 JSON 为准，无法从中得到的卖点不得写入文案；事实字段不是必须逐项播报的清单。
 2. **清点素材（静图分拣在文案之前）**：`ffprobe` 检查视频素材。静图必须按 §静图分拣 跑 `inventory_stills.py`、看原图和长图 y 刻度总览、只对上镜栏目裁窗并看裁图、写入 `edit/stills_inventory.md`。将 `product_info.json` 的图片/属性与本地素材逐项对照；先定上镜 / 只取信息 / 弃用，再写口播。文字多的图可以不上镜，但其中的重点信息仍可进口播和字幕。
-3. **评估并按需收集视频素材**：先依据静图分拣结果判断是否需要外部动态画面。它只能承担一个明确任务：建立作品世界观、在角色/设定转换时提供承接，或在连续静态画面后重置节奏；若没有能完成该任务的官方镜头，或它会遮蔽商品细节，就不使用。相关动漫、游戏的官方 OP / ED / Trailer 可从 **YouTube 或 Bilibili** 下载，两个来源平级：YouTube 用 `yt-dlp` 检索并下载视频；Bilibili 先用 `python helpers/bilibili_src.py search "<关键词>" --n 5` 找到 BV 号，再运行 `python helpers/bilibili_src.py check-watermark <BVid>`，未命中水印后必须用 `python helpers/bilibili_src.py download <BVid> --video-out <输出路径>` 下载**视频画面**（需要时加 `--cookies-from-browser <browser>`），而非只下载音频。仅当素材来自 Bilibili 时需要该水印检查；YouTube/其他平台来源的视频无需水印检测。若选择视频，记录其来源、源时间码、计划插入的口播语义点；成片输出时间窗等第 7 步转写后再填，不为凑数量下载或插入。
+3. **评估并按相关性分层收集视频素材**：先依据静图分拣结果判断是否需要外部动态画面。检索必须按“**商品本体/具体人物 → 具体作品设定 → 其他相关动漫或游戏**”逐层降级，不得为了方便直接使用泛相关片段：A 先找该商品、该 SKU、该手办或商品官方展示视频；B 找不到合适商品视频，再找商品对应的具体角色官方片段；C 仍不足，再找该角色所属作品的官方 OP / ED / Trailer；D 以上都找不到能服务叙事的镜头，才允许使用其他相关动漫或游戏片段，且必须能解释其与商品氛围的关系。每层内 YouTube 与 Bilibili 平级，相关性高于平台便利。外部动态画面只能承担一个明确任务：建立作品世界观、在角色/设定转换时提供承接，或在连续静态画面后重置节奏；若没有能完成该任务的官方镜头，或它会遮蔽商品细节，就不使用。YouTube 用 `yt-dlp` 检索并下载视频；Bilibili 先用 `python helpers/bilibili_src.py search "<关键词>" --n 5` 找到 BV 号，再运行 `python helpers/bilibili_src.py check-watermark <BVid>`，未命中水印后必须用 `python helpers/bilibili_src.py download <BVid> --video-out <输出路径>` 下载**视频画面**（需要时加 `--cookies-from-browser <browser>`），而非只下载音频。仅当素材来自 Bilibili 时需要该水印检查；YouTube/其他平台来源的视频无需水印检测。若选择视频，记录检索层级、关键词、来源、源时间码、计划插入的口播语义点；成片输出时间窗等第 7 步转写后再填，不为凑数量下载或插入。
 4. **检索设定**：在 <https://zh.moegirl.org.cn/> 查找产品相关动漫设定与梗，供文案使用；设定只能补充世界观，不能替代 `product_info.json` 的商品事实。
 5. **撰写文案**：按 §文案规范起草口播文案。先用 `product_info.json` 的 `detail.summary` 建立事实清单，再将上镜镜头对应保留窗口；密字图里抽出的重点写进口播（字幕随口播），画面改用其他上镜素材。判定为弃用的条目两端都不进。
 6. **确认方案**：把文案 + 素材搭配展示给用户，确认后再制作（文案是创作性产物，先确认避免返工）。必须附上静图分拣表（上镜 / 只取信息 / 弃用，含理由）；上镜的长图写出 `--region`。搭配只钉「哪句对哪张图 / 哪一窗」，不要把估出来的秒数当成最终镜头时长。若选择了动态视频，标明它服务的口播语义点；输出时间窗等第 7 步转写后再填。若未选择，说明商品图如何独立完成节奏。不能只列 BGM 或下载链接。
@@ -503,7 +511,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 **题材约束（在通用流程上收紧，不另走一套切法）**
 
 - **普通商品详情**（手办参数、食品配料、规格表、使用说明等）：上镜优先外观、场景、卖点插图，以及字少、图大的规格块。配料表、营养成分、密集参数、注意事项小字默认「只取信息」——数字可以进口播，不要当镜头硬滚。一窗对应一个卖点或一块仍看得清的规格图，不要把整页说明书裁成一条。
-- **漫展 / 展览活动长图**（海报、场贩、票种、嘉宾日程等）：上镜优先主视觉 KV、嘉宾/舞台海报、场贩商品卡、票价、礼包套装；礼包要把每一件实物和价格都框进同一窗。当日版权/IP 密表「只取信息」。购票须知、退票换票、交通路线、展商格子名录默认不上镜（无画面价值则「弃用」）。
+- **漫展 / 展览活动长图**（海报、场贩、票种、嘉宾日程等）：上镜优先主视觉 KV、嘉宾/舞台海报、场贩商品卡、礼包套装；礼包要把每一件实物框进同一窗，价格/票价只作后台核验，默认不进入对外文本或画面。当日版权/IP 密表「只取信息」。购票须知、退票换票、交通路线、展商格子名录默认不上镜（无画面价值则「弃用」）。
 
 ### 图片素材规范
 
@@ -528,7 +536,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 ### 视频素材规范
 
-- **来源优先级**：视频素材可来自 **YouTube** 或 **Bilibili** 两个平级来源，均**仅限相关动漫、游戏视频的 OP / ED / Trailer 类型**；**明确排除玩家二创、同人剪辑、游戏实况、reaction 等任何其他来源类型**。两者择一或混用，按素材质量与可用性决定。
+- **来源优先级**：先按相关性分层，再在同一层级内选择平台。严格顺序是：**Exact product/SKU 商品视频 → Exact character 具体人物官方视频 → Exact work 具体作品官方 OP / ED / Trailer → Broader related 其他相关动漫/游戏官方片段**。只有前一层找不到合适、能服务口播的镜头时，才能进入下一层；不能因为 YouTube 或 Bilibili 更容易下载，就跳过商品/人物相关检索。所有层级均仅限官方 OP / ED / Trailer 或官方商品/角色展示视频；明确排除玩家二创、同人剪辑、游戏实况、reaction 等任何其他来源类型。YouTube 与 Bilibili 在同一层级内平级。
   - **Bilibili 素材获取**（`helpers/bilibili_src.py`）：
     - 检索：`python helpers/bilibili_src.py search "<关键词>" --n 5`（返回 bvid / 标题 / UP主 / 时长）。
     - 下载前必先做水印检测（仅 B 站视频）：`python helpers/bilibili_src.py check-watermark <BVid>`，命中即弃用该视频；检测查四角边缘细节（B 站水印常见于右上角），属启发式，重要片段建议肉眼抽检。YouTube/其他平台视频免检。
@@ -545,10 +553,10 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 ### 文案规范（口播脚本）
 
-- **体裁**：资讯类"云逛"口播——滚动播放资讯/商品图片，配合口播解说。画面跟上镜素材走；密字图里抽出的重点可以只出现在口播和字幕里。
-- **风格**：多放动漫梗，引起 ACG 爱好者共鸣；结合素材文件夹中的效果图介绍产品；结合动漫设定展开（设定信息查 moegirl）。口播覆盖 `stills_inventory.md` 里「上镜」和「只取信息」的内容，不讲「弃用」条目。
+- **体裁**：商品/角色设定导向的短视频解说——让商品画面、角色气质和作品语境带动叙事，不写成资讯播报或参数清单。画面跟上镜素材走；密字图里抽出的重点可以只出现在口播和字幕里。
+- **风格**：多放动漫梗，引起 ACG 爱好者共鸣；结合素材文件夹中的效果图介绍商品本身；结合动漫设定展开（设定信息查 moegirl）。普通商品优先写设定、外观、动作、服装、表情、材质和氛围；数码电子等功能型产品才重点写功能与参数。口播覆盖 `stills_inventory.md` 里「上镜」和「只取信息」的内容，不讲「弃用」条目。
 - **表达**：必须口语化，只讲这件商品；口播篇幅按用户给出的成片时长写，不自行改成别的长度；**禁止**出现逻辑总结类词语（如"总之""综上所述""最后总结一下"）；**禁止分点列条**。对外用词见 §对外文本禁词。
-- **数字**：金额、数量、尺寸、比例等量化信息一律用阿拉伯数字（如「199元」「2.0」「1/7」），禁止写成中文数字（如「一百九十九元」「二点零」）。口语虚词如「一个」「一下」保持汉字。送入 TTS 的文案和烧录字幕都必须保留分数线，禁止把「1/7」改成「17」或「1 7」。
+- **数字**：需要播报的数量、尺寸、比例等量化信息使用阿拉伯数字（如「2.0」「1/7」），禁止写成中文数字（如「二点零」）；普通商品只保留对理解画面或比例确有必要的数字，价格默认不写。数码电子等功能型产品在商品事实支持下可以详细讲参数。口语虚词如「一个」「一下」保持汉字。送入 TTS 的文案和烧录字幕都必须保留分数线，禁止把「1/7」改成「17」或「1 7」。
 
 ### 视频规格
 
@@ -598,7 +606,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 - 除非用户明确要求，简介不放素材来源 URL；需要记录授权或来源时，写入 `<素材目录>/edit/project.md`。用户明确要求外链时，链接必须独占一行，并在发布后核对平台没有扩大自动链接范围。
 - 使用 API 或 CLI 发送简介时，必须传递真实换行符。禁止在单引号参数中写字面量 `\\n`、`\\r\\n` 或其他转义文本。
-- 默认建议三行：一句产品定位、一句可见卖点、最后一行活动或行动信息。用户提供且要求保留的活动文案必须照录；不得自行添加营销口号。
+- 默认建议三行：一句产品/角色定位、一句可见外观或设定卖点、最后一行引导观众点击商品链接了解完整信息。普通商品不要列价格或规格清单；数码电子等功能型产品才可在第二行放关键参数。用户提供且要求保留的活动文案必须照录；不得自行添加营销口号。
 - 发送前校验：简介符合 §对外文本禁词，且不得包含字面量反斜杠转义、文件系统路径、凭证标识，或非用户要求的 URL。
 - 每次新投稿或编辑后，必须运行 `biliup show <BV>` 回读 `archive.desc`，精确核对文本、真实换行与链接范围。回读不一致时，停止商品挂载、评论等后续发布动作；修正简介并再次回读通过后才能继续。
 
@@ -608,7 +616,7 @@ Numeric specs here are production standards, not taste. Override only when the u
 
 只写这件商品：品类、外观、IP/角色、材质或一个真实卖点。
 
-- 标题开头必须是“具体卖点／产品特质 + 强烈感受”的完整短句，再用感叹号衔接产品名。优先让卖点本身成为钩子，例如“桌面萌力超标！”“压迫感炸场！”“反差萌拉满！”。禁止使用“救命啊”“谁顶得住”“我破防了”等空泛语气词作为开头。
+- 标题开头必须是“具体卖点／产品特质 + 强烈感受”的完整短句，再用感叹号衔接产品名。普通商品优先写角色、设定、外观或气质，不得用价格或参数堆砌标题；数码电子等功能型产品才可使用关键参数作为真实卖点。优先让卖点本身成为钩子，例如“桌面萌力超标！”“压迫感炸场！”“反差萌拉满！”。禁止使用“救命啊”“谁顶得住”“我破防了”等空泛语气词作为开头。
 - 必须露出产品具体名或圈内昵称；只使用本商品自带的 IP、角色或圈层称呼。
 - 用反差或悬念时，必须来自这件商品的外观或用途，不得使用“最”“第一”“100%”等绝对化表述。
 - 文风应像真人发布：简洁、口语化、信息具体；不堆砌标签，不使用营销腔和标题党式承诺
