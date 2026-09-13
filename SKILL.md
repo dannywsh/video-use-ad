@@ -51,6 +51,10 @@ These are the things where deviation produces silent failures or broken output. 
 15. **B站视频只能真实投稿一次。** 一次任务中只允许触发一次视频上传/投稿；超时、网络错误、返回不明确、投稿后抽查发现问题或任何其他原因都不得再次上传同一视频，也不得换投稿方式补投。`show`、列表查询、`ffprobe`、抽帧、预览和其他只读核验不算投稿。
 16. **所有投稿校验必须发生在投稿动作之前。** 最终视频、字幕、音频、画面、标题、简介、标签、分区、16:9 封面、4:3 封面及（如有）商品身份/挂载参数，必须在真实投稿前一次性校验并锁定；校验有任何失败、缺失或不确定，投稿动作必须保持未执行。
 17. **投稿命令启动后不得因结果不确定而重试。** 只用 `biliup list` / `biliup show <BV/AV>` 等只读命令核实状态；无法确认是否已投稿时，按唯一投稿机会已消耗处理，停止上传并向用户报告。投稿后的抽查只能用于记录结果或决定允许的后置动作，不能触发第二次投稿。
+18. **长时渲染不得使用一次性阻塞调用。** 任何预计超过单次工具等待上限的 `ffmpeg`、`stable_motion.py`、`transitions.py`、字幕烧录或混音任务，必须在可持续的 PTY/后台会话中启动，保存会话 ID，分段轮询直到进程自然结束；不得因为一次工具调用返回或等待上限而判断渲染失败。
+19. **渲染产物必须原子完成。** 每个长任务先输出到唯一的临时文件或临时目录，只有进程退出码为 0、`ffprobe` 可读、完整解码到 EOF 且时长/分辨率符合预期后，才能改名为正式产物并进入下一步。中断、超时、`moov atom not found`、解码错误或文件大小异常时，必须丢弃该临时产物并从同一输入重新渲染；不得把半成品交给拼接、混音、字幕或投稿流程。
+20. **禁止因渲染耗时降级画面实现。** 渲染慢、工具等待到期、单段失败或会话中断时，禁止改用会裁切主体的 `scale=increase+crop`、强制填充、静态截图、缩短镜头、跳过转场或其他改变已确认画面策略的替代方案。应恢复/分段执行原定 helper 或修复执行会话；若原定方案无法完成，停止并报告阻塞原因。
+21. **商品主体完整性是阻塞检查。** 对商品图，最终画布可以由模糊背景铺满，但清晰前景必须按比例完整保留；除非文案和方案明确要求特写，否则头部、脸、脚、底座及关键配件不得被画布裁切。每个商品镜头至少抽查首帧、中帧、尾帧，发现主体截断必须修复后才能继续。
 
 Everything else in this document is a worked example. Deviate whenever the material calls for it.
 
@@ -104,6 +108,20 @@ First-time install lives in `install.md` (clone, deps, ffmpeg, skill registratio
 Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this SKILL.md. Resolve their paths relative to the directory containing this file — the skill is typically symlinked at `~/.claude/skills/video-use/` or `~/.codex/skills/video-use/`.
 
 ## Helpers
+
+### 长时渲染执行协议
+
+渲染工具的单次等待上限属于外层执行环境，不是视频任务的时长上限。凡是可能超过该上限的任务，必须采用可持续会话：在 PTY 或后台会话中启动命令，保留会话 ID，使用轮询读取进度和退出码。不要把多个长镜头串进一个普通阻塞调用，也不要用一次调用返回来判断 FFmpeg 是否完成。
+
+每个输出必须遵循以下顺序：
+
+1. 写入唯一临时路径，例如 `slot_03.mp4.part`，不得直接覆盖正式产物。
+2. 会话自然结束后检查退出码。
+3. 运行 `ffprobe` 检查容器、音视频流、时长、分辨率和帧率。
+4. 运行一次完整解码到 null 输出，确认没有 `Invalid NAL`、`moov atom not found` 或其他解码错误。
+5. 仅当上述检查全部通过时，才将临时文件改名为正式路径。
+
+如果会话被中断，必须从原始输入恢复渲染并重新校验。禁止使用裁切、强制拉伸、静态截图、缩短时长或跳过已确认工序来掩盖渲染耗时；禁止把未完成文件交给 `transitions.py`、`mix_ad_audio.py`、字幕烧录或投稿流程。
 
 - **`transcribe.py <video>`** — single-file ASR. `--provider elevenlabs|paraformer` (default elevenlabs). `--num-speakers N` is Scribe-only. `--audio-track N` selects a zero-based audio stream (OBS: 0 = game, 1 = mic); track 0 keeps the existing `{stem}.json` cache name, other tracks write `{stem}.trackN.json`. Refuses to upload a silent track (peak < -60 dBFS). Cached. Writes Scribe-compatible `words` JSON for either provider.
 - **`transcribe_batch.py <videos_dir>`** — 4-worker parallel transcription. Same `--provider` and `--audio-track` flags. Use for multi-take.
