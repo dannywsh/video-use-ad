@@ -48,6 +48,9 @@ These are the things where deviation produces silent failures or broken output. 
 12. **All session outputs in `<videos_dir>/edit/`.** Never write inside the `video-use/` project directory.
 13. **TTS narration subtitles are verbatim and final-audio aligned.** Generate captions only after the final TTS audio exists. Every spoken word, including brand names, qualifiers, and fillers the user expects, must appear in the subtitles in the same order; split only at natural semantic boundaries and never summarize, paraphrase, or omit text. Derive timestamps from word-level transcription or forced alignment of that exact final audio, then convert them to output-timeline offsets. Never hand-estimate subtitle timings from the script or total runtime.
 14. **Inserted third-party footage must carry the intended meaning on screen.** For a game, film, animation, or product promo, every inserted clip must visibly show the relevant character, world, gameplay, product use, or other claim-supporting subject during its usable duration. Do not use platform logos, publisher cards, rating screens, preorder/date cards, title-only frames, black frames, or generic footage as a substitute. Sample the planned in/out frames before editing; discard or trim any clip whose visible content does not directly support the adjacent narration, caption, or product claim.
+15. **B站视频只能真实投稿一次。** 一次任务中只允许触发一次视频上传/投稿；超时、网络错误、返回不明确、投稿后抽查发现问题或任何其他原因都不得再次上传同一视频，也不得换投稿方式补投。`show`、列表查询、`ffprobe`、抽帧、预览和其他只读核验不算投稿。
+16. **所有投稿校验必须发生在投稿动作之前。** 最终视频、字幕、音频、画面、标题、简介、标签、分区、16:9 封面、4:3 封面及（如有）商品身份/挂载参数，必须在真实投稿前一次性校验并锁定；校验有任何失败、缺失或不确定，投稿动作必须保持未执行。
+17. **投稿命令启动后不得因结果不确定而重试。** 只用 `biliup list` / `biliup show <BV/AV>` 等只读命令核实状态；无法确认是否已投稿时，按唯一投稿机会已消耗处理，停止上传并向用户报告。投稿后的抽查只能用于记录结果或决定允许的后置动作，不能触发第二次投稿。
 
 Everything else in this document is a worked example. Deviate whenever the material calls for it.
 
@@ -69,6 +72,7 @@ The skill lives in `video-use/`. User footage lives wherever they put it. All se
     ├── master.srt               ← output-timeline subtitles
     ├── downloads/               ← yt-dlp outputs
     ├── verify/                  ← debug frames / timeline PNGs / still bands
+    ├── submission_preflight.md ← 投稿前检查清单、锁定参数和文件 SHA-256
     ├── stills_inventory.md      ← promo stills: on-screen / voice-only facts / unused
     ├── cover.jpg                ← 16:9 Bilibili cover (skills/bili-cover)
     ├── cover-4x3.jpg            ← subject-aware left/center/right crop of cover.jpg
@@ -151,6 +155,18 @@ If this session is **Bilibili product promo**, skip this section and follow §Bi
 
    If anything fails: fix → re-render → re-eval. **Cap at 3 self-eval passes** — if issues remain after 3, flag them to the user rather than looping forever. Only present the preview once the self-eval passes.
 8. **Iterate + persist.** Natural-language feedback, re-plan, re-render. Never re-transcribe. Final render on confirmation. Append to `project.md`.
+
+### B站唯一投稿闸门
+
+本节适用于任何使用 `biliup` 投稿的成片，且必须在执行真实投稿命令前完成。投稿不是“先发出去再抽查”的流程，而是一次性动作：
+
+1. 封存本次投稿输入到 `<videos_dir>/edit/submission_preflight.md`：最终 `final.mp4`、标题、简介、标签、分区、`cover.jpg`、`cover-4x3.jpg` 及商品参数（如有），并记录最终视频和封面的 SHA-256。封存后不得替换这些文件或修改这些字段。
+2. 在投稿前完成并记录全部检查：`ffprobe` 检查文件可读性、容器、音视频流、编码、时长、分辨率和帧率；抽查成片首段、中段、尾段及所有关键切点；确认字幕、音频峰值、画面与文案、外部素材相关性、对外文本禁词、标题/简介/标签和两张封面均通过。简介的真实换行与链接范围也必须在投稿前确认；投稿后的 `show` 回读只能作为结果核验，不能替代投稿前校验。
+3. 只有全部结果为通过，才允许执行一次 `biliup upload ...`。执行后即使发现错误，也不得自动修正并再次投稿；停止并向用户说明问题。
+4. 命令超时、断网、进程中断或返回不明确时，禁止重跑上传命令。改用只读查询确认是否已生成 BV/AV；仍无法确认时，按已投稿处理，不能为了“确保成功”再投一次。
+5. 投稿成功后可执行 `biliup show <BV/AV>` 和本 skill 允许的商品挂载/评论等后置操作，但这些动作永远不能重新上传视频。任何需要换视频文件的修正版都属于新的投稿任务，当前任务不得执行。
+
+若用户只要求制作视频而没有明确要求投稿，完成自检后交付文件即可，不要擅自投稿；若明确要求投稿，必须先完成本闸门再调用 `biliup upload`。
 
 ## Cut craft (techniques)
 
