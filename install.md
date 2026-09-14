@@ -195,7 +195,7 @@ Tell the user, in one short message:
 - Skill root (`$SKILL_ROOT`, usually `~/.agents/skills/video-use`).
 - `cd` into the footage folder and start the agent there.
 - A good first message: *"edit these into a launch video"* or *"inventory these takes and propose a strategy."*
-- Outputs land in `<videos_dir>/edit/`.
+- Outputs and generated editing projects land in `<videos_dir>/edit/`. This includes animation source projects, configs, local dependencies, caches, downloaded media, previews, and final files; keep the footage folder root and the skill repository free of session-generated files.
 
 ## Keeping the skill current
 
