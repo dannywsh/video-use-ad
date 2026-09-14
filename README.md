@@ -48,7 +48,7 @@ claude    # 或 codex、hermes 等
 
 > 把这些素材剪成一个发布视频
 
-助手会清点素材、提出剪辑策略、等你确认，然后在素材旁边生成 `edit/final.mp4`。所有输出都在 `<videos_dir>/edit/` 目录下，项目仓库保持干净。
+助手会清点素材、提出剪辑策略、等你确认，然后在素材目录中生成 `edit/final.mp4`。所有本次任务生成的文件都必须放在 `<videos_dir>/edit/`：包括工程源代码、配置、依赖、缓存、下载素材、中间文件、预览和最终产物；素材目录根部的原始文件保持不变，项目仓库也保持干净。
 
 ## 安装 skill（用户）
 
@@ -157,16 +157,16 @@ AI 从不"看"视频，而是**读**视频 — 通过两层信息获得词级精
 ```bash
 # 从干净的单人参考音频创建私有音色并合成。支持 wav/mp3/m4a/opus，建议每段至少 10 秒。
 python helpers/tts.py --provider fish --reference-audio sample.wav \
-  --fish-voice-title "品牌旁白" --text "你好" --output out.mp3
+  --fish-voice-title "品牌旁白" --text "你好" --output /absolute/path/videos/edit/voiceover/out.mp3
 
 # 后续复用首次执行打印的 Fish voice ID。
 python helpers/tts.py --provider fish --fish-voice-id <voice_id> \
-  --text "下一段旁白" --output next.mp3
+  --text "下一段旁白" --output /absolute/path/videos/edit/voiceover/next.mp3
 
 # 进阶调参：JSON 会传给 Fish Audio 的 TTS 请求。
 python helpers/tts.py --provider fish --fish-voice-id <voice_id> \
   --extra_params '{"temperature":0.5,"top_p":0.7,"prosody":{"speed":1.1}}' \
-  --text "更稳定、略快的旁白" --output tuned.mp3
+  --text "更稳定、略快的旁白" --output /absolute/path/videos/edit/voiceover/tuned.mp3
 ```
 
 Fish Audio 克隆始终创建为 `private`；其 API Key 置于同一 `.env` 的 `FISH_API_KEY`。`--extra_params` 仅适用于 Fish，接收 JSON 对象；可调整 `temperature`、`top_p`、`repetition_penalty`、`chunk_length`、`latency`、`prosody` 等。`top_k` 会原样透传以兼容服务端扩展，但不在当前公开字段列表中。CLI 会保护文本、声线 ID、输出格式与模型选择，不能通过该参数覆盖。
@@ -174,20 +174,20 @@ Fish Audio 克隆始终创建为 `private`；其 API Key 置于同一 `.env` 的
 ### ElevenLabs
 
 ```bash
-python helpers/tts.py --provider elevenlabs --voice <voice_id> --text "你好" --output out.mp3
+python helpers/tts.py --provider elevenlabs --voice <voice_id> --text "你好" --output /absolute/path/videos/edit/voiceover/out.mp3
 ```
 
 ### 小米 MiMo（仅当用户点名时）
 
 ```bash
 # 预置音色（冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean 等）
-python helpers/tts.py --provider mimo --mimo-model tts --voice 冰糖 --text "你好" --output out.wav
+python helpers/tts.py --provider mimo --mimo-model tts --voice 冰糖 --text "你好" --output /absolute/path/videos/edit/voiceover/out.wav
 
 # 文本描述定制音色
-python helpers/tts.py --provider mimo --mimo-model voicedesign --style "温柔的女声" --text "你好" --output out.wav
+python helpers/tts.py --provider mimo --mimo-model voicedesign --style "温柔的女声" --text "你好" --output /absolute/path/videos/edit/voiceover/out.wav
 
 # 音频样本声音克隆（参考音频 ≤10MB，mp3/wav）
-python helpers/tts.py --provider mimo --mimo-model voiceclone --reference-audio sample.wav --text "你好" --output out.wav
+python helpers/tts.py --provider mimo --mimo-model voiceclone --reference-audio /absolute/path/sample.wav --text "你好" --output /absolute/path/videos/edit/voiceover/out.wav
 ```
 
 MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，非流式调用返回 base64 编码的 wav 音频。
