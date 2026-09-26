@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -92,6 +93,105 @@ class ScrollWindowTests(unittest.TestCase):
         term = f"{pps:.6f}*t"
         self.assertIn(term, slow)
         self.assertIn(term, long)
+
+
+class PanPlanTests(unittest.TestCase):
+    def test_wide_image_pans_right_at_locked_speed_then_holds(self):
+        plan = S.compute_pan_plan(3000, 1080, 1920, 1080, 12.0)
+
+        self.assertTrue(plan.can_pan)
+        self.assertGreater(plan.travel, 0)
+        self.assertEqual(plan.viewports_per_sec, S.DEFAULT_PAN_VIEWPORTS_PER_SEC)
+        self.assertAlmostEqual(plan.pan_s, plan.travel / (1920 * 0.12))
+        self.assertAlmostEqual(plan.hold_s, 12.0 - plan.pan_s)
+        self.assertIn(f"min({plan.travel}\\,", S.pan_crop_x(plan.travel, 1920 * 0.12))
+
+    def test_pan_speed_does_not_change_with_duration_or_image_width(self):
+        short = S.compute_pan_plan(2600, 1080, 1920, 1080, 2.0)
+        long = S.compute_pan_plan(4000, 1080, 1920, 1080, 10.0)
+
+        self.assertEqual(short.viewports_per_sec, long.viewports_per_sec)
+        self.assertEqual(
+            S.locked_pan_pixels_per_sec(1920),
+            S.DEFAULT_PAN_VIEWPORTS_PER_SEC * 1920,
+        )
+
+    def test_sixteen_by_nine_detail_image_uses_gentle_zoom_and_slow_pan(self):
+        plan = S.compute_pan_plan(1920, 1080, 1920, 1080, 6.0)
+
+        self.assertTrue(plan.can_pan)
+        self.assertTrue(plan.detail_zoom)
+        self.assertAlmostEqual(plan.zoom_factor, 1.18, places=2)
+        self.assertEqual(plan.viewports_per_sec, S.DEFAULT_DETAIL_PAN_VIEWPORTS_PER_SEC)
+        self.assertAlmostEqual(plan.pan_s, plan.travel / (1920 * 0.04))
+
+    def test_narrow_image_still_falls_back_to_push(self):
+        plan = S.compute_pan_plan(1600, 1080, 1920, 1080, 6.0)
+
+        self.assertFalse(plan.can_pan)
+        self.assertEqual(plan.travel, 0)
+        self.assertEqual(plan.hold_s, 6.0)
+
+    def test_natural_pan_threshold_is_fifteen_percent_of_output_width(self):
+        below = S.compute_pan_plan(2207, 1080, 1920, 1080, 6.0)
+        at_threshold = S.compute_pan_plan(2208, 1080, 1920, 1080, 6.0)
+
+        self.assertTrue(below.can_pan)
+        self.assertTrue(below.detail_zoom)
+        self.assertGreater(below.zoom_factor, 1.0)
+        self.assertTrue(at_threshold.can_pan)
+        self.assertFalse(at_threshold.detail_zoom)
+        self.assertEqual(at_threshold.travel, 288)
+
+    def test_renderer_uses_push_when_pan_space_is_too_short(self):
+        with (
+            patch.object(S, "image_dimensions", return_value=(1600, 1080)),
+            patch.object(S, "render_profile", return_value=S.RenderProfile(1, ("-c:v", "libx264", "-crf"))),
+            patch.object(S, "render_push") as render_push,
+        ):
+            plan = S.render_pan_right(Path("source.jpg"), Path("out.mp4"), 6, 30, 1920, 1080, 17)
+
+        self.assertFalse(plan.can_pan)
+        render_push.assert_called_once()
+
+    def test_cli_accepts_pan_right_mode(self):
+        helper = Path(__file__).parents[1] / "helpers" / "stable_motion.py"
+        result = subprocess.run(
+            [sys.executable, str(helper), "--help"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertIn("pan-right", result.stdout)
+
+    def test_cli_rejects_unknown_mode(self):
+        helper = Path(__file__).parents[1] / "helpers" / "stable_motion.py"
+        result = subprocess.run(
+            [sys.executable, str(helper), "missing.jpg", "--mode", "sideways", "--duration", "1"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("invalid choice", result.stderr)
+
+    def test_pan_probe_reports_horizontal_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "wide.png"
+            Image.new("RGB", (3000, 1080), (50, 60, 70)).save(image)
+            helper = Path(__file__).parents[1] / "helpers" / "stable_motion.py"
+            result = subprocess.run(
+                [
+                    sys.executable, str(helper), str(image), "--mode", "pan-right",
+                    "--duration", "8", "--width", "320", "--height", "180", "--probe",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["can_pan"])
+        self.assertGreater(payload["travel"], 0)
+        self.assertEqual(payload["locked_vps"], S.DEFAULT_PAN_VIEWPORTS_PER_SEC)
 
 
 class RenderProfileTests(unittest.TestCase):
