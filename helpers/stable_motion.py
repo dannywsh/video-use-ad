@@ -28,6 +28,15 @@ SCROLL_FOREGROUND_WIDTH_SCALE = 0.92
 # 可读匀速：约 5.5 秒滚过一屏。只按这个速度走；镜头更长就停在末帧，更短就裁窗。
 DEFAULT_SCROLL_VIEWPORTS_PER_SEC = 0.18
 DEFAULT_MAX_VIEWPORTS_PER_SEC = DEFAULT_SCROLL_VIEWPORTS_PER_SEC
+# 缓慢横向赏析：约 8.3 秒移动一个画面宽度。
+DEFAULT_PAN_VIEWPORTS_PER_SEC = 0.12
+# 16:9 细节图轻放大后慢扫，尽量让 6 秒镜头覆盖大部分行程。
+DEFAULT_DETAIL_PAN_VIEWPORTS_PER_SEC = 0.04
+# 细节扫镜保留 18% 横向余量；16:9 图像对应约 1.18× 放大。
+DETAIL_PAN_TARGET_VIEWPORTS = 0.18
+MIN_DETAIL_PAN_ASPECT_RATIO = 0.98
+# 只有横向余量达到成片画面宽度的 15% 才值得扫镜。
+MIN_PAN_TRAVEL_VIEWPORTS = 0.15
 
 
 @dataclass(frozen=True)
@@ -138,6 +147,22 @@ class ScrollWindow:
     hold_s: float
 
 
+@dataclass(frozen=True)
+class PanPlan:
+    """Describe the horizontal foreground size and bounded rightward camera move."""
+
+    foreground_w: int
+    foreground_h: int
+    travel: int
+    viewport_widths: float
+    viewports_per_sec: float
+    zoom_factor: float
+    detail_zoom: bool
+    pan_s: float
+    hold_s: float
+    can_pan: bool
+
+
 def locked_scroll_pixels_per_sec(
     render_h: int,
     speed: float = DEFAULT_SCROLL_VIEWPORTS_PER_SEC,
@@ -153,6 +178,99 @@ def scroll_overlay_y(travel: int, pixels_per_sec: float) -> str:
     if travel < 1 or pixels_per_sec <= 0:
         return "0"
     return f"-min({travel}\\, {pixels_per_sec:.6f}*t)"
+
+
+def locked_pan_pixels_per_sec(
+    render_w: int,
+    speed: float = DEFAULT_PAN_VIEWPORTS_PER_SEC,
+) -> float:
+    """Return the fixed horizontal crawl rate in canvas pixels per second.
+
+    Input: render canvas width and a viewport-widths-per-second rate. Returns: constant speed,
+    independent of the source image width and shot duration.
+    """
+    if render_w <= 0 or speed <= 0:
+        return 0.0
+    return speed * render_w
+
+
+def pan_crop_x(travel: int, pixels_per_sec: float) -> str:
+    """Return a crop x expression that scans from the image's left edge to its right edge.
+
+    Input: available horizontal travel and fixed speed. Returns: a positive, time-based x
+    expression that stops at the final image edge.
+    """
+    if travel < 1 or pixels_per_sec <= 0:
+        return "0"
+    return f"min({travel}\\, {pixels_per_sec:.6f}*t)"
+
+
+def compute_pan_plan(
+    source_w: int,
+    source_h: int,
+    render_w: int,
+    render_h: int,
+    duration: float,
+) -> PanPlan:
+    """Plan a horizontal scan, using a restrained center zoom for detail images.
+
+    Input: source dimensions, render canvas and shot duration. Returns: scaled crop dimensions,
+    available travel, selected fixed speed, motion and hold times, and suitability.
+    """
+    if min(source_w, source_h, render_w, render_h) <= 0 or duration <= 0:
+        raise ValueError("sizes and duration must be positive")
+    foreground_h = render_h
+    foreground_w = even(source_w * foreground_h / source_h)
+    travel = max(0, foreground_w - render_w)
+    zoom_factor = 1.0
+    detail_zoom = False
+    speed_for_plan = DEFAULT_PAN_VIEWPORTS_PER_SEC
+
+    # A near-output-aspect detail still has useful horizontal detail to reveal after a
+    # restrained center crop. Narrow/portrait compositions keep the safe push fallback.
+    output_aspect = render_w / render_h
+    source_aspect = source_w / source_h
+    if (
+        travel < render_w * MIN_PAN_TRAVEL_VIEWPORTS
+        and source_aspect >= output_aspect * MIN_DETAIL_PAN_ASPECT_RATIO
+    ):
+        target_w = render_w * (1.0 + DETAIL_PAN_TARGET_VIEWPORTS)
+        zoom_factor = target_w / foreground_w
+        foreground_w = even(foreground_w * zoom_factor)
+        foreground_h = even(foreground_h * zoom_factor)
+        travel = max(0, foreground_w - render_w)
+        detail_zoom = True
+        speed_for_plan = DEFAULT_DETAIL_PAN_VIEWPORTS_PER_SEC
+
+    can_pan = travel >= render_w * MIN_PAN_TRAVEL_VIEWPORTS
+    if not can_pan:
+        return PanPlan(
+            foreground_w=foreground_w,
+            foreground_h=foreground_h,
+            travel=travel,
+            viewport_widths=foreground_w / render_w,
+            viewports_per_sec=0.0,
+            zoom_factor=1.0,
+            detail_zoom=False,
+            pan_s=0.0,
+            hold_s=duration,
+            can_pan=False,
+        )
+
+    pixels_per_sec = locked_pan_pixels_per_sec(render_w, speed_for_plan)
+    pan_s = min(duration, travel / pixels_per_sec)
+    return PanPlan(
+        foreground_w=foreground_w,
+        foreground_h=foreground_h,
+        travel=travel,
+        viewport_widths=foreground_w / render_w,
+        viewports_per_sec=speed_for_plan,
+        zoom_factor=zoom_factor,
+        detail_zoom=detail_zoom,
+        pan_s=pan_s,
+        hold_s=max(0.0, duration - pan_s),
+        can_pan=True,
+    )
 
 
 def has_meaningful_scroll(travel: float, render_h: int) -> bool:
@@ -384,6 +502,48 @@ def render_scroll(
     return window
 
 
+def render_pan_right(
+    source: Path,
+    output: Path,
+    duration: float,
+    fps: int,
+    width: int,
+    height: int,
+    crf: int,
+) -> PanPlan:
+    """Render a left-to-right camera scan over a wide or detail still image.
+
+    Input: source still, output path, duration, frame rate, canvas size and quality. Returns: the
+    motion plan; wide images scan without zoom, near-16:9 detail images use a mild center zoom, and
+    narrower images use the existing centre push.
+    """
+    source_width, source_height = image_dimensions(source)
+    profile = render_profile()
+    render_width = even(width * profile.supersample)
+    render_height = even(height * profile.supersample)
+    plan = compute_pan_plan(source_width, source_height, render_width, render_height, duration)
+    if not plan.can_pan:
+        render_push(source, output, duration, fps, width, height, crf)
+        return plan
+
+    pixels_per_sec = locked_pan_pixels_per_sec(render_width, plan.viewports_per_sec)
+    x_expression = pan_crop_x(plan.travel, pixels_per_sec)
+    y_offset = (plan.foreground_h - render_height) // 2
+    video_filter = (
+        f"scale={plan.foreground_w}:{plan.foreground_h}:flags=lanczos,"
+        f"crop={render_width}:{render_height}:x='{x_expression}':y={y_offset},"
+        f"scale={width}:{height}:flags=lanczos,format=yuv420p"
+    )
+    run([
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-loop", "1", "-framerate", str(fps), "-i", str(source),
+        "-t", f"{duration:.6f}", "-vf", video_filter,
+        "-r", str(fps), "-an", *encoder_args(profile, crf),
+        "-movflags", "+faststart", str(output),
+    ])
+    return plan
+
+
 def main() -> None:
     """Parse CLI options and render one motion-stable product still clip.
 
@@ -392,7 +552,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Render a motion-stable product still with FFmpeg.")
     parser.add_argument("source", type=Path, help="Input product/detail image")
     parser.add_argument("-o", "--output", type=Path, help="Output MP4 (omit with --probe)")
-    parser.add_argument("--mode", choices=("push", "scroll"), default="push", help="Centre push-in or vertical detail scroll")
+    parser.add_argument(
+        "--mode", choices=("push", "scroll", "pan-right"), default="push",
+        help="Centre push-in, vertical detail scroll, or left-to-right pan (needs 15%% horizontal overscan)",
+    )
     parser.add_argument("--duration", type=float, required=True, help="Clip duration in seconds")
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--width", type=int, default=1920)
@@ -402,19 +565,29 @@ def main() -> None:
         "--max-viewports-per-sec",
         type=float,
         default=DEFAULT_SCROLL_VIEWPORTS_PER_SEC,
-        help="Locked crawl speed for every still (default 0.18 screens/s). "
+        help="Locked vertical-scroll speed (default 0.18 screens/s); pan-right uses 0.12 wide or 0.04 detail. "
              "Do not raise this for taller images; duration only changes how long we crawl "
              "or how much we crop. Leftover shot time holds the last frame.",
     )
     parser.add_argument("--anchor", choices=("top", "center", "bottom"), default="top")
     parser.add_argument("--region", default=None, help="Vertical band START,END as 0–1 fractions of the source (e.g. 0.12,0.45)")
-    parser.add_argument("--probe", action="store_true", help="Print the scroll crop plan as JSON and exit")
+    parser.add_argument("--probe", action="store_true", help="Print the selected motion plan as JSON and exit")
     args = parser.parse_args()
     if not args.source.is_file():
         parser.error(f"source does not exist: {args.source}")
     if args.duration <= 0 or args.fps <= 0 or args.width <= 0 or args.height <= 0:
         parser.error("duration, fps, width and height must be positive")
     region = parse_region(args.region) if args.region else None
+    if args.probe and args.mode == "pan-right":
+        src_w, src_h = image_dimensions(args.source)
+        profile = render_profile()
+        render_w = even(args.width * profile.supersample)
+        render_h = even(args.height * profile.supersample)
+        plan = compute_pan_plan(src_w, src_h, render_w, render_h, args.duration)
+        payload = asdict(plan)
+        payload["locked_vps"] = plan.viewports_per_sec
+        print(json.dumps(payload, ensure_ascii=False))
+        return
     if args.probe or args.mode == "scroll":
         src_w, src_h = image_dimensions(args.source)
         profile = render_profile()
@@ -435,6 +608,19 @@ def main() -> None:
     if args.mode == "push":
         render_push(args.source, args.output, args.duration, args.fps, args.width, args.height, args.crf)
         print(f"stable motion → {args.output} (push, {args.duration:.2f}s)")
+        return
+    if args.mode == "pan-right":
+        plan = render_pan_right(
+            args.source, args.output, args.duration, args.fps, args.width, args.height, args.crf,
+        )
+        motion_kind = (
+            "detail pan" if plan.detail_zoom else "pan-right"
+        ) if plan.can_pan else "full-height push (not enough horizontal travel)"
+        print(
+            f"stable motion → {args.output} ({motion_kind}, {args.duration:.2f}s, "
+            f"travel={plan.travel}px, zoom={plan.zoom_factor:.2f}x, "
+            f"{plan.viewports_per_sec:.2f} vp/s, hold {plan.hold_s:.2f}s)"
+        )
         return
     window = render_scroll(
         args.source, args.output, args.duration, args.fps, args.width, args.height, args.crf,

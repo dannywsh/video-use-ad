@@ -55,7 +55,7 @@ These are the things where deviation produces silent failures or broken output. 
 18. **长时渲染不得使用一次性阻塞调用。** 任何预计超过单次工具等待上限的 `ffmpeg`、`stable_motion.py`、`transitions.py`、字幕烧录或混音任务，必须在可持续的 PTY/后台会话中启动，保存会话 ID，分段轮询直到进程自然结束；不得因为一次工具调用返回或等待上限而判断渲染失败。
 19. **渲染产物必须原子完成。** 每个长任务先输出到唯一的临时文件或临时目录，只有进程退出码为 0、`ffprobe` 可读、完整解码到 EOF 且时长/分辨率符合预期后，才能改名为正式产物并进入下一步。中断、超时、`moov atom not found`、解码错误或文件大小异常时，必须丢弃该临时产物并从同一输入重新渲染；不得把半成品交给拼接、混音、字幕或投稿流程。
 20. **禁止因渲染耗时降级画面实现。** 渲染慢、工具等待到期、单段失败或会话中断时，禁止改用会裁切主体的 `scale=increase+crop`、强制填充、静态截图、缩短镜头、跳过转场或其他改变已确认画面策略的替代方案。应恢复/分段执行原定 helper 或修复执行会话；若原定方案无法完成，停止并报告阻塞原因。
-21. **商品主体完整性是阻塞检查。** 对商品图，最终画布可以由模糊背景铺满，但清晰前景必须按比例完整保留；除非文案和方案明确要求特写，否则头部、脸、脚、底座及关键配件不得被画布裁切。每个商品镜头至少抽查首帧、中帧、尾帧，发现主体截断必须修复后才能继续。
+21. **商品主体完整性是阻塞检查。** 完整商品镜头必须保留商品全貌；只有明确作为细节镜头的素材才允许用 `pan-right` 中心放大裁切，且需要让解说中的目标细节在扫镜过程中清楚可见。完整商品镜头的头部、脸、脚、底座及关键配件不得被裁掉。每个商品镜头至少抽查首帧、中帧、尾帧，发现主体或目标细节丢失必须修复后才能继续。
 
 Everything else in this document is a worked example. Deviate whenever the material calls for it.
 
@@ -144,7 +144,7 @@ Helpers (`helpers/transcribe.py`, `helpers/render.py`, etc.) live alongside this
 - **Bilibili cookie acquisition:** pass `--cookies-from-browser <chrome|firefox|edge|safari|brave>`; yt-dlp reads the already-logged-in Bilibili cookie straight from the user's local browser (no manual export). Anonymous downloads are audio-only.
 - **`env_file.py`** — dotenv lookup and migrate. Canonical keys: `~/.config/video-use/.env` on all platforms (Windows: `%USERPROFILE%\.config\video-use\.env`). `--user-path` prints the local file; `--migrate` copies a leftover skill-root `.env` there so `npx skills update` cannot wipe keys.
 - **`inventory_stills.py`** — list stills, draw a y-tick overview for tall infographics, and crop full-width windows the agent already chose. Does **not** auto-slice by 16:9 viewport, color gaps, or OCR. Crops pad both ends by default (prefer extra neighbors over clipped goods). `region` in crop JSON is for `stable_motion.py --region`. See §静图分拣.
-- **`stable_motion.py`** — jitter-free push/scroll of product stills. `--mode scroll` crawls at a fixed 0.18 screens/s; leftover shot time holds the last frame, and a too-tall still is cropped (`--anchor top|center|bottom`, `--region 0.12,0.45`, `--probe`). See §Bilibili product promo.
+- **`stable_motion.py`** — jitter-free push/scroll/pan of product stills. `--mode scroll` crawls vertically at a fixed 0.18 screens/s. `--mode pan-right` uses a natural wide image at 0.12 screen widths/s; near-16:9 images selected for detail appreciation get a centered 1.18× zoom and a slower 0.04 screen widths/s scan. On 16:9 footage this crops about 7.6% from the top and bottom, so reserve it for detail shots; use `push` for complete product views. Narrower images fall back to `push`. Scroll supports `--anchor top|center|bottom`, `--region 0.12,0.45`, and `--probe`; `pan-right` also supports `--probe` to inspect available travel and zoom. See §Bilibili product promo.
 - **`mix_ad_audio.py`** — locked promo mix (voice -13 LUFS, BGM -27 LUFS). Promo mode only.
 - **`build_tts_subtitles.py` / `verify_tts_subtitles.py` / `ad_subtitles.py`** — verbatim single-line Chinese captions for promo TTS. Promo mode only.
 
@@ -580,12 +580,12 @@ The rules here are production standards, not taste. For ordinary goods, product/
 
 #### 动态图片分镜稳定性
 
-- 商品主图可采用缓慢中心推镜，详情长图可采用缓慢纵向滚动；背景、清晰前景和暗角先各生成一次静态资产，再由同一条视频滤镜链驱动运动。不得为每一帧重新生成背景或前景位图。
+- 商品主图可采用缓慢中心推镜，横向宽图可采用向右扫镜，详情长图可采用缓慢纵向滚动；背景、清晰前景和暗角先各生成一次静态资产，再由同一条视频滤镜链驱动运动。不得为每一帧重新生成背景或前景位图。
 - **运动参数必须连续**：推镜缩放以输出帧编号计算同一条连续曲线，并在滤镜中以浮点表达式执行。推镜清晰前景在结束帧应约占满画面高度，不要以明显留白的小图结束。长图只有在等比例缩放后超出一屏高度至少 **15%** 时才滚动；未达到阈值的短长图保持整图、等比例放大到接近满高并走推镜。需要滚动时，滚动必须对时间 `t` **匀速**（固定像素/秒），滚完用 `min()` 停在末帧；禁止用 `n/(frames-1)` 把整段行程摊满镜头时长，那会让短窗口几乎不动、长窗口被拉成不同速度。禁止在逐帧循环中对缩放后的宽高、居中坐标或裁切坐标使用 `int()` / `//` 后再渲染；这会产生“停一帧、跳一像素”的抖动。
 - 缩放与滚动不能分别用不同的取整坐标系计算。长图滚动的可用纵向范围必须基于**当前帧**缩放后的图像高度计算；否则缩放变化会使裁切位置不连续。
-- 推荐用 FFmpeg `zoompan` 的 `on`（输出帧编号）驱动中心推镜，并让透明前景在模糊背景上合成；该方案避免 Python/PIL 按帧缩放带来的整数舍入抖动，也避免大量 PNG 序列写入造成的性能问题。
-- **统一实现**：商品静态图必须优先使用 `python helpers/stable_motion.py <图片> -o <片段.mp4> --mode push --duration <秒>`；详情/信息长图使用 `--mode scroll`（固定 0.18 屏/秒；过长则裁窗，滚完停住，不要手写更快的 duration 去追完整张）。该 helper 先只生成一次高分辨率合成画布，再由 `zoompan` 的 `on` 驱动中心推镜；滚动模式只在开始时缩放前景，再用 `t` 的匀速表达式移动它。它会检测操作系统：**macOS 使用 1.5× 输出画布、Lanczos 下采样和 `h264_videotoolbox` 硬编码**，平衡慢运动稳定性与 M 系列芯片上的渲染时间；其他系统保留 **2× 输出画布和 `libx264` CRF 编码**。禁止退回到逐帧 `scale` 加 `overlay` 的组合。
-- **调用示例**：`python helpers/stable_motion.py 主图.jpg -o edit/clips_visual/main.mp4 --mode push --duration 6`；`python helpers/stable_motion.py 商详.jpg -o edit/clips_visual/detail.mp4 --mode scroll --duration 7`；长图对顶部：`... --mode scroll --duration 7 --anchor top`；对中段：`--region 0.28,0.62`。`--probe` 只打印裁窗 JSON。
+- 中心推镜推荐用 FFmpeg `zoompan` 的 `on`（输出帧编号）驱动；纵向滚动用 `overlay` 的连续时间表达式，横向扫镜用 `crop` 的连续 x 表达式。模糊背景只用于填补画布边缘，不能替代清晰前景的轻放大来展示细节。该方案避免 Python/PIL 按帧缩放带来的整数舍入抖动，也避免大量 PNG 序列写入造成的性能问题。
+- **统一实现**：商品静态图默认使用 `python helpers/stable_motion.py <图片> -o <片段.mp4> --mode push --duration <秒>`。超宽图用 `--mode pan-right` 按自然余量从左扫到右，固定 0.12 屏宽/秒；成片 16:9 时，源图宽高比约 2.05:1 或更宽（例如 3000×1080）即可不裁切扫镜。若素材约为 16:9 且确实是细节图，同一模式会以中心放大约 1.18× 后慢扫（固定 0.04 屏宽/秒）；裁掉的上下边缘各约占原图 7.6%，完整商品主图不要用此策略。更窄图像回退到 `push`。详情/信息长图使用 `--mode scroll`（固定 0.18 屏/秒；过长则裁窗，滚完停住，不要手写更快的 duration 去追完整张）。滚动模式只在开始时缩放前景，再用 `t` 的匀速表达式移动它。它会检测操作系统：**macOS 使用 1.5× 输出画布、Lanczos 下采样和 `h264_videotoolbox` 硬编码**，平衡慢运动稳定性与 M 系列芯片上的渲染时间；其他系统保留 **2× 输出画布和 `libx264` CRF 编码**。禁止退回到逐帧 `scale` 加 `overlay` 的组合。
+- **调用示例**：`python helpers/stable_motion.py 主图.jpg -o edit/clips_visual/main.mp4 --mode push --duration 6`；横向赏析：`python helpers/stable_motion.py 横图.jpg -o edit/clips_visual/pan.mp4 --mode pan-right --duration 6`；商详长图：`python helpers/stable_motion.py 商详.jpg -o edit/clips_visual/detail.mp4 --mode scroll --duration 7`；长图对顶部：`... --mode scroll --duration 7 --anchor top`；对中段：`--region 0.28,0.62`。`--probe` 可检查对应模式的移动空间/裁窗计划。
 - **自检**：动态图片分镜生成后，逐段以 1× 速度查看首段、中段、末段，并抽取连续 10 帧检查运动方向只前进、不回跳；发现抖动时必须修正运动表达式后重渲染，不得改用静态图规避问题。
 
 ### 视频素材规范
