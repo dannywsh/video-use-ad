@@ -439,7 +439,15 @@ def build_master_srt(edl: dict, edit_dir: Path, out_path: Path) -> None:
     """
     transcripts_dir = edit_dir / "transcripts"
     ranges = edl["ranges"]
-    offsets = output_timeline_offsets(ranges, edl_join_transitions(edl))
+    # Keep subtitles on the authored timeline when the joiner pads outgoing
+    # clips with transition handles (the default); subtract overlaps only
+    # when EDL explicitly opts into a shorter programme.
+    keep_duration = bool(edl.get("transition_handles", True))
+    offsets = output_timeline_offsets(
+        ranges,
+        edl_join_transitions(edl),
+        keep_duration=keep_duration,
+    )
 
     entries: list[tuple[float, float, str]] = []
 

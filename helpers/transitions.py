@@ -134,17 +134,30 @@ def edl_join_transitions(edl: dict) -> list[Transition | None]:
 def output_timeline_offsets(
     ranges: list[dict],
     joins: list[Transition | None],
+    *,
+    keep_duration: bool = False,
 ) -> list[float]:
-    """Output-timeline start of each range after xfade overlap is subtracted."""
+    """Return the output start time of each range for the selected join policy.
+
+    When ``keep_duration`` is true, outgoing clips receive cloned-frame tails,
+    so transitions begin at the original cut points and subtitle timing stays
+    on the authored programme timeline. Otherwise xfade overlaps shorten it.
+    Inputs are the EDL ranges and their inbound transition specs; the return
+    value is one output-time offset per range.
+    """
     offsets: list[float] = []
     cursor = 0.0
+    previous_duration: float | None = None
     for i, rng in enumerate(ranges):
         duration = float(rng["end"]) - float(rng["start"])
         join = joins[i] if i < len(joins) else None
-        if join is not None:
-            cursor -= join.duration
+        if join is not None and previous_duration is not None and not keep_duration:
+            join = clamp_join(join, previous_duration, duration)
+            if join is not None:
+                cursor -= join.duration
         offsets.append(cursor)
         cursor += duration
+        previous_duration = duration
     return offsets
 
 
@@ -480,7 +493,11 @@ def main() -> None:
     ap.add_argument(
         "--type",
         default="fade",
-        help="Transition applied to every inbound join (default: fade). Use cut for hard cuts.",
+        help=(
+            "Transition applied to every inbound join (default: fade). "
+            "For product edits, try smoothleft/smoothright for a gentle directional "
+            "move or fade:0.25 for a short cross-dissolve; use cut for same-scene angles."
+        ),
     )
     ap.add_argument(
         "--duration",
@@ -492,7 +509,10 @@ def main() -> None:
         "--joins",
         type=str,
         default=None,
-        help="Per-inbound-join list, e.g. fade:0.4,cut,fadeblack:0.5",
+        help=(
+            "Per-inbound-join list, e.g. smoothright:0.35,fade:0.25,cut; "
+            "captions keep the authored timeline unless --no-keep-duration is set."
+        ),
     )
     ap.add_argument("--width", type=int, default=None)
     ap.add_argument("--height", type=int, default=None)
