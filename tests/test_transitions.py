@@ -18,6 +18,7 @@ class ParseTransitionTests(unittest.TestCase):
 
     def test_named_and_dict_forms(self):
         self.assertEqual(T.parse_transition("fadeblack"), T.Transition("fadeblack", 0.4))
+        self.assertEqual(T.parse_transition("smoothright"), T.Transition("smoothright", 0.4))
         self.assertEqual(
             T.parse_transition({"type": "wipeleft", "duration": 0.5}),
             T.Transition("wipeleft", 0.5),
@@ -63,6 +64,26 @@ class JoinResolutionTests(unittest.TestCase):
             T.output_timeline_offsets(ranges, joins),
             [0.0, 4.6, 10.2],
         )
+
+    def test_output_offsets_keep_original_dialogue_timeline_with_handles(self):
+        ranges = [
+            {"source": "a", "start": 0, "end": 5},
+            {"source": "b", "start": 10, "end": 16},
+            {"source": "c", "start": 0, "end": 4},
+        ]
+        joins = [None, T.Transition("smoothright", 0.4), T.Transition("fade", 0.25)]
+        self.assertEqual(
+            T.output_timeline_offsets(ranges, joins, keep_duration=True),
+            [0.0, 5.0, 11.0],
+        )
+
+    def test_output_offsets_use_clamped_overlap_for_short_clips(self):
+        ranges = [
+            {"source": "a", "start": 0, "end": 1},
+            {"source": "b", "start": 0, "end": 0.2},
+        ]
+        joins = [None, T.Transition("fade", 0.4)]
+        self.assertEqual(T.output_timeline_offsets(ranges, joins), [0.0, 0.91])
 
 
 class FilterGraphTests(unittest.TestCase):
