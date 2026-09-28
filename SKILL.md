@@ -26,7 +26,7 @@ Pick one mode at session start. Do not blend the general-edit recipe and the loc
 - **General edit** (default): existing footage such as talking heads, interviews, tutorials, travel and montages. Read [general-edit.md](references/general-edit.md). Artistic freedom applies to taste, subject to the Hard Rules.
 - **Bilibili promo**: 宣传广告视频、广告视频、云逛视频、ACG 宣传、商品宣传视频、产品宣传片，或静图配克隆声音的 B站商品视频。Read [promo-common.md](references/promo-common.md), then exactly the applicable type reference:
   - 普通商品、手办及数码等功能型商品：[product.md](references/product.md)。
-  - 漫展、游戏展、展览、音乐会等活动：[convention.md](references/convention.md)。活动标题由模型从素材支持的五种切入点中自行选一种，不套用商品的强烈感受开头要求。
+  - 漫展、游戏展、展览、音乐会等活动：[convention.md](references/convention.md)。漫展优先按其中的 [视频构成](references/convention.md#漫展视频构成) 起草文案与分镜，再按用户时长调整。活动标题由模型从素材支持的五种切入点中自行选一种，不套用商品的强烈感受开头要求。
 
 结合用户目标、商品详情和实际素材选择类型；`detail.kind` 的 `mall` / `ticket` 是数据来源类型，不能单独代替业务分类。若仍不明确且会影响制作，先向用户确认。广告时长只从用户提示词读取，缺失时追问；普通商品依原有规则优先叙事与外观，不默认列规格或售价；数码电子等功能型商品允许以经核实的技术参数为叙事中心，详见商品类型参考文件。
 
