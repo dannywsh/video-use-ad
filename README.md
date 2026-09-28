@@ -28,7 +28,7 @@
 ```text
 Set up https://github.com/dannywsh/video-use-ad for me.
 
-Read install.md first to install this repo, wire up ffmpeg, register the skill with whichever agent you're running under, and set up transcription credentials — ElevenLabs Scribe by default, or Paraformer for Chinese ASR. For AI voiceover, set up the Fish Audio API key (default TTS). Then read SKILL.md for daily usage and follow its routing to the selected workflow and relevant references. Resolve helpers from the main skill root. After install, don't transcribe anything on your own — just tell me it's ready and wait for me to drop footage into a folder.
+Read install.md first to install this repo, wire up ffmpeg, register the skill with whichever agent you're running under, and set up transcription credentials — ElevenLabs Scribe by default, or Paraformer for Chinese ASR. For AI voiceover, set up the Fish Audio API key (default TTS). Then read SKILL.md for daily usage: common editing, promo, TTS, animation, EDL and publishing workflows are included there; promos additionally read only the applicable product, event or lottery reference once. Resolve helpers from the main skill root. After install, don't transcribe anything on your own — just tell me it's ready and wait for me to drop footage into a folder.
 ```
 
 助手会自动完成克隆、依赖安装、技能注册，并在需要时向你询问 API Key：
@@ -102,8 +102,11 @@ chmod 600 ~/.config/video-use/.env         # Windows 可省略 chmod
 
 ```
 video-use-ad/
-├── SKILL.md              # 模式选择、关键硬规则与按需读取入口
-├── references/           # 共用流程、商品／活动差异及可选工具说明
+├── SKILL.md              # 通用制作流程、工具、配音、动画、EDL、字幕、投稿与硬规则
+├── references/           # 仅保留题材细节
+│   ├── product.md        # 手办／普通商品，含数码与功能型商品例外
+│   ├── convention.md     # 展会／音乐会等活动的叙事、选材与标题
+│   └── lottery.md        # 一番赏／魔力赏，沿用已有随机奖励约束
 ├── install.md            # 首次安装指引
 ├── helpers/              # 核心脚本
 │   ├── transcribe.py         # ASR：ElevenLabs Scribe 或 Paraformer
@@ -210,11 +213,11 @@ MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，�
 素材在 <文件夹路径> 文件夹中。参考声音用 <.mp3>，BGM 风格：<风格>。
 ```
 
-从 [`SKILL.md`](./SKILL.md) 选择模式，广告任务读取 [共用制作流程](references/promo-common.md)，再读取 [商品要求](references/product.md) 或 [活动要求](references/convention.md)。封面由 [bili-cover](skills/bili-cover/SKILL.md) 按对应模式处理：商品生成一张 16:9，查看构图后选择连续 `crop_center_x` 裁出 4:3；漫展直接使用官方宣传图，保留其原有文字、Logo、英文及票价，不调用生图。
+从 [`SKILL.md`](SKILL.md) 选择模式，通用流程一次读取后在本会话复用。广告任务执行主文件中的 [共用制作流程](SKILL.md#bilibili-product-promo-hard-recipe)，再仅读取适用的 [商品要求](references/product.md)、[活动要求](references/convention.md) 或 [一番赏／魔力赏要求](references/lottery.md)，不逐阶段搜索通用参考文件。封面由 [bili-cover](skills/bili-cover/SKILL.md) 按对应模式处理：商品生成一张 16:9，查看构图后选择连续 `crop_center_x` 裁出 4:3；漫展直接使用官方宣传图，保留其原有文字、Logo、英文及票价，不调用生图。封面后端与 Manim 子技能仍保留实际使用的专业说明。
 
 数码电子等功能型商品允许以经核实的技术参数为叙事中心，口播、字幕、标题和简介可使用这些参数；普通商品仍保留原有属性限制。具体要求见 [商品类型参考](references/product.md#数码及功能型商品)。
 
-商品标题优先采用“短感受句！核心商品名＋推荐类后缀”，长品牌、厂商和系列名默认省略，让角色名尽早出现。根据品类选用“推荐”“好物推荐”“周边推荐”等一个自然、简短的后缀，例如“冬装温柔感满满！椎名真昼冬服手办推荐”；默认不用“鉴赏”“赏析”，避免重复品类或额外追加一整句情绪文案。商品全名仍用于身份核验；必要版本及用户明确要求的品牌信息按需保留。详见 [商品标题要求](references/promo-common.md#商品标题要求)。
+商品标题优先采用“短感受句！核心商品名＋推荐类后缀”，长品牌、厂商和系列名默认省略，让角色名尽早出现。根据品类选用“推荐”“好物推荐”“周边推荐”等一个自然、简短的后缀，例如“冬装温柔感满满！椎名真昼冬服手办推荐”；默认不用“鉴赏”“赏析”，避免重复品类或额外追加一整句情绪文案。商品全名仍用于身份核验；必要版本及用户明确要求的品牌信息按需保留。详见 [商品标题要求](SKILL.md#商品标题要求)。
 
 漫展、音乐会、游戏展等活动标题，从“开售、假期出游、阵容、信息整理、具体粉丝钩子”五种切入点中先筛选素材支持、视频实际覆盖的类型，再由模型自行选一种生成，不调用随机选择脚本；不套用商品的强烈感受开头结构。没有可用钩子时采用中性活动标题，最终仍只交付一个标题。适用条件、生成提示词及各活动类型示例见 [活动视频标题](references/convention.md#活动视频标题)。
 
@@ -242,7 +245,7 @@ python "<skill_root>/helpers/biliup_goods.py" 13666878 \
 4. **对内容类型零假设。** 先看、先问，再剪辑。
 5. **按模式应用规则。** 普通剪辑保留艺术自由，广告规范继续强制；关键硬规则以主入口为准。
 
-从 [`SKILL.md`](./SKILL.md) 按需读取参考文件；普通剪辑详见 [general-edit.md](references/general-edit.md)。辅助脚本始终从技能根目录解析；所有制作进程的临时目录指向素材目录下的 `edit/tmp/`。
+普通剪辑、工具说明、配音、动画、EDL、广告混音和字幕、投稿检查均在 [`SKILL.md`](SKILL.md)，按原有章节定位；普通剪辑详见 [The process](SKILL.md#the-process)。`references/` 只保留题材细节，不保留已经合并的通用参考或旧文件占位。辅助脚本始终从技能根目录解析；所有制作进程的临时目录指向素材目录下的 `edit/tmp/`。
 
 ### 商品介绍的转场
 
@@ -255,7 +258,7 @@ python "<skill_root>/helpers/transitions.py" "<edit>/overview.mp4" "<edit>/detai
 
 默认保留节目时长：每个出点会补足转场所需的尾帧，转场从原定剪辑点开始，口播和字幕时间不变。只有明确要缩短成片、并同步重做口播与字幕时，才使用 `--no-keep-duration`。
 
-固定整段口播的广告字幕始终对齐最终口播音频，不按画面转场重叠提前。`mix_ad_audio.py` 会在混音前检查实际视频流是否足够容纳完整口播，过短时失败并提示修正时间窗，避免静默截掉末句；限幅器启用延迟补偿。普通剪辑的声音随片段移动，两种转场模式均可使用，但字幕生成须采用与拼接一致的 `transition_handles` 设置，详见 [时间轴说明](references/edl.md)。
+固定整段口播的广告字幕始终对齐最终口播音频，不按画面转场重叠提前。`mix_ad_audio.py` 会在混音前检查实际视频流是否足够容纳完整口播，过短时失败并提示修正时间窗，避免静默截掉末句；限幅器启用延迟补偿。普通剪辑的声音随片段移动，两种转场模式均可使用，但字幕生成须采用与拼接一致的 `transition_handles` 设置，详见 [时间轴说明](SKILL.md#edl-format)。
 
 相关回归测试：`tests/test_render_subtitle_timing.py`、`tests/test_transitions.py`、`tests/test_mix_ad_audio.py`。最后一项包含实际混音测试，验证语音起点、末尾保留及过短画面的拒绝行为，需要本地 FFmpeg/FFprobe。
 
