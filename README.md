@@ -15,7 +15,7 @@
 - **静态商品图动态展示**，支持中心推近、详情长图纵向滚动和宽图横向扫镜
 - **商品镜头转场**，可逐个连接选择柔和方向推移、短溶解、淡黑或硬切
 - **30ms 音频淡入淡出**，每个剪辑点都不会出现爆音
-- **烧录字幕**，默认两词大写分块，完全可自定义
+- **烧录字幕**，普通剪辑默认两词大写分块、可自定义；广告使用固定中文单行样式
 - **AI 配音（TTS）**，支持 ElevenLabs、MiMo、Fish Audio 三个 provider；Fish Audio 支持私有可复用的声音克隆
 - **生成动画叠加层**，支持 HyperFrames、Remotion、Manim 或 PIL，并行子代理逐个生成
 - **渲染输出自检**，在每个剪辑边界自动评估后才展示结果
@@ -28,7 +28,7 @@
 ```text
 Set up https://github.com/dannywsh/video-use-ad for me.
 
-Read install.md first to install this repo, wire up ffmpeg, register the skill with whichever agent you're running under, and set up transcription credentials — ElevenLabs Scribe by default, or Paraformer for Chinese ASR. For AI voiceover, set up the Fish Audio API key (default TTS). Then read SKILL.md for daily usage, and always read helpers/ because that's where the editing scripts live. After install, don't transcribe anything on your own — just tell me it's ready and wait for me to drop footage into a folder.
+Read install.md first to install this repo, wire up ffmpeg, register the skill with whichever agent you're running under, and set up transcription credentials — ElevenLabs Scribe by default, or Paraformer for Chinese ASR. For AI voiceover, set up the Fish Audio API key (default TTS). Then read SKILL.md for daily usage and follow its routing to the selected workflow and relevant references. Resolve helpers from the main skill root. After install, don't transcribe anything on your own — just tell me it's ready and wait for me to drop footage into a folder.
 ```
 
 助手会自动完成克隆、依赖安装、技能注册，并在需要时向你询问 API Key：
@@ -66,7 +66,7 @@ npx skills update -g -y
 
 - 全平台：`~/.config/video-use/.env`（Windows 即 `%USERPROFILE%\.config\video-use\.env`）
 
-本机路径：`python helpers/env_file.py --user-path`。若旧密钥还在 skill 目录 `.env` 里，先跑 `python helpers/env_file.py --migrate`。
+本机路径：`python "<skill_root>/helpers/env_file.py" --user-path`。若旧密钥还在 skill 目录 `.env` 里，先跑 `python "<skill_root>/helpers/env_file.py" --migrate`。
 
 之后更新：
 
@@ -102,7 +102,8 @@ chmod 600 ~/.config/video-use/.env         # Windows 可省略 chmod
 
 ```
 video-use-ad/
-├── SKILL.md              # 日常使用指南（助手每次会话读取）
+├── SKILL.md              # 模式选择、关键硬规则与按需读取入口
+├── references/           # 共用流程、商品／活动差异及可选工具说明
 ├── install.md            # 首次安装指引
 ├── helpers/              # 核心脚本
 │   ├── transcribe.py         # ASR：ElevenLabs Scribe 或 Paraformer
@@ -119,7 +120,11 @@ video-use-ad/
 └── poster.html           # 宣传页
 ```
 
+这里的 `<skill_root>`、`<videos_dir>`、`<edit>` 均须先按主入口解析为绝对路径。制作会话的临时目录设置见主入口的“临时目录”一节；首次安装与制作会话分开。
+
 ## 工作原理
+
+以下说明普通剪辑的转录与视觉检查；商品及漫展任务按广告共用流程先采集商品事实、清点图片，再生成与对齐口播。
 
 AI 从不"看"视频，而是**读**视频 — 通过两层信息获得词级精度的剪辑能力。
 
@@ -158,15 +163,15 @@ AI 从不"看"视频，而是**读**视频 — 通过两层信息获得词级精
 
 ```bash
 # 从干净的单人参考音频创建私有音色并合成。支持 wav/mp3/m4a/opus，建议每段至少 10 秒。
-python helpers/tts.py --provider fish --reference-audio sample.wav \
+python "<skill_root>/helpers/tts.py" --provider fish --reference-audio "<videos_dir>/sample.wav" \
   --fish-voice-title "品牌旁白" --text "你好" --output /absolute/path/videos/edit/voiceover/out.mp3
 
 # 后续复用首次执行打印的 Fish voice ID。
-python helpers/tts.py --provider fish --fish-voice-id <voice_id> \
+python "<skill_root>/helpers/tts.py" --provider fish --fish-voice-id <voice_id> \
   --text "下一段旁白" --output /absolute/path/videos/edit/voiceover/next.mp3
 
 # 进阶调参：JSON 会传给 Fish Audio 的 TTS 请求。
-python helpers/tts.py --provider fish --fish-voice-id <voice_id> \
+python "<skill_root>/helpers/tts.py" --provider fish --fish-voice-id <voice_id> \
   --extra_params '{"temperature":0.5,"top_p":0.7,"prosody":{"speed":1.1}}' \
   --text "更稳定、略快的旁白" --output /absolute/path/videos/edit/voiceover/tuned.mp3
 ```
@@ -176,20 +181,20 @@ Fish Audio 克隆始终创建为 `private`；其 API Key 置于同一 `.env` 的
 ### ElevenLabs
 
 ```bash
-python helpers/tts.py --provider elevenlabs --voice <voice_id> --text "你好" --output /absolute/path/videos/edit/voiceover/out.mp3
+python "<skill_root>/helpers/tts.py" --provider elevenlabs --voice <voice_id> --text "你好" --output /absolute/path/videos/edit/voiceover/out.mp3
 ```
 
 ### 小米 MiMo（仅当用户点名时）
 
 ```bash
 # 预置音色（冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean 等）
-python helpers/tts.py --provider mimo --mimo-model tts --voice 冰糖 --text "你好" --output /absolute/path/videos/edit/voiceover/out.wav
+python "<skill_root>/helpers/tts.py" --provider mimo --mimo-model tts --voice 冰糖 --text "你好" --output /absolute/path/videos/edit/voiceover/out.wav
 
 # 文本描述定制音色
-python helpers/tts.py --provider mimo --mimo-model voicedesign --style "温柔的女声" --text "你好" --output /absolute/path/videos/edit/voiceover/out.wav
+python "<skill_root>/helpers/tts.py" --provider mimo --mimo-model voicedesign --style "温柔的女声" --text "你好" --output /absolute/path/videos/edit/voiceover/out.wav
 
 # 音频样本声音克隆（参考音频 ≤10MB，mp3/wav）
-python helpers/tts.py --provider mimo --mimo-model voiceclone --reference-audio /absolute/path/sample.wav --text "你好" --output /absolute/path/videos/edit/voiceover/out.wav
+python "<skill_root>/helpers/tts.py" --provider mimo --mimo-model voiceclone --reference-audio /absolute/path/sample.wav --text "你好" --output /absolute/path/videos/edit/voiceover/out.wav
 ```
 
 MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，非流式调用返回 base64 编码的 wav 音频。
@@ -205,19 +210,23 @@ MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，�
 素材在 <文件夹路径> 文件夹中。参考声音用 <.mp3>，BGM 风格：<风格>。
 ```
 
-完整规格见 [`SKILL.md`](./SKILL.md) 的 **Bilibili product promo** 一节。封面 4:3 不再固定正中裁剪：先检查 16:9 画面，再根据主体和标题位置选择左、中央或右侧锚点；漫展/展览宣传图直接使用官方宣传图，不调用生图。
+从 [`SKILL.md`](./SKILL.md) 选择模式，广告任务读取 [共用制作流程](references/promo-common.md)，再读取 [商品要求](references/product.md) 或 [活动要求](references/convention.md)。封面由 [bili-cover](skills/bili-cover/SKILL.md) 按对应模式处理：商品生成一张 16:9，查看构图后选择连续 `crop_center_x` 裁出 4:3；漫展直接使用官方宣传图，保留其原有文字、Logo、英文及票价，不调用生图。
+
+数码电子等功能型商品允许以经核实的技术参数为叙事中心，口播、字幕、标题和简介可使用这些参数；普通商品仍保留原有属性限制。具体要求见 [商品类型参考](references/product.md#数码及功能型商品)。
+
+漫展、音乐会、游戏展等活动标题，从“开售、假期出游、阵容、信息整理、具体粉丝钩子”五种切入点中先筛选素材支持、视频实际覆盖的类型，再由模型自行选一种生成，不调用随机选择脚本；不套用商品的强烈感受开头结构。没有可用钩子时采用中性活动标题，最终仍只交付一个标题。适用条件、生成提示词及各活动类型示例见 [活动视频标题](references/convention.md#活动视频标题)。
 
 ### 商品信息采集
 
 宣传片流程的第一步必须调用 biliup 的商品搜索，商品名称、价格、属性、图片和票务信息以返回的 JSON 为准：
 
 ```bash
-python helpers/biliup_goods.py 13666878 \
+python "<skill_root>/helpers/biliup_goods.py" 13666878 \
   --cookie /absolute/path/cookies.json \
   --output /absolute/path/videos/edit/product_info.json
 ```
 
-如果 `biliup` 不在 `PATH`，添加 `--biliup-bin /absolute/path/biliup`。`product_info.json` 是当前任务的事实来源；脚本不能从文件名或图片猜测商品卖点。
+如果 `biliup` 不在 `PATH`，添加 `--biliup-bin /absolute/path/biliup`。`product_info.json` 是当前任务的事实来源；脚本不能从文件名或图片猜测商品卖点。已核实但未生效的优惠可提醒观众先加入购物车，届时符合活动条件再参与，不表述为已经生效或人人可享。
 
 ## 设计原则
 
@@ -225,20 +234,24 @@ python helpers/biliup_goods.py 13666878 \
 2. **音频优先，画面跟随。** 剪辑点来自语音边界和静音间隙。
 3. **询问 → 确认 → 执行 → 自检 → 持久化。** 未经策略确认绝不碰剪辑。
 4. **对内容类型零假设。** 先看、先问，再剪辑。
-5. **12 条硬规则，其余自由发挥。** 制作正确性不可妥协，品味可以。
+5. **按模式应用规则。** 普通剪辑保留艺术自由，广告规范继续强制；关键硬规则以主入口为准。
 
-完整制作规则和剪辑技巧见 [`SKILL.md`](./SKILL.md)。
+从 [`SKILL.md`](./SKILL.md) 按需读取参考文件；普通剪辑详见 [general-edit.md](references/general-edit.md)。辅助脚本始终从技能根目录解析；所有制作进程的临时目录指向素材目录下的 `edit/tmp/`。
 
 ### 商品介绍的转场
 
 商品全景切到局部细节时，可用 `smoothright:0.35` 或 `smoothleft:0.35`；不同素材之间可用短交叉溶解 `fade:0.25`；同一镜头的连续角度适合硬切。避免连续重复方向推移，也不要让醒目的效果盖过商品本身。
 
 ```bash
-python helpers/transitions.py overview.mp4 detail.mp4 display.mp4 \\
-  -o visual.mp4 --joins smoothright:0.35,fade:0.25 --keep-duration
+python "<skill_root>/helpers/transitions.py" "<edit>/overview.mp4" "<edit>/detail.mp4" "<edit>/display.mp4" \
+  -o "<edit>/visual.mp4" --joins smoothright:0.35,fade:0.25 --keep-duration
 ```
 
 默认保留节目时长：每个出点会补足转场所需的尾帧，转场从原定剪辑点开始，口播和字幕时间不变。只有明确要缩短成片、并同步重做口播与字幕时，才使用 `--no-keep-duration`。
+
+固定整段口播的广告字幕始终对齐最终口播音频，不按画面转场重叠提前。`mix_ad_audio.py` 会在混音前检查实际视频流是否足够容纳完整口播，过短时失败并提示修正时间窗，避免静默截掉末句；限幅器启用延迟补偿。普通剪辑的声音随片段移动，两种转场模式均可使用，但字幕生成须采用与拼接一致的 `transition_handles` 设置，详见 [时间轴说明](references/edl.md)。
+
+相关回归测试：`tests/test_render_subtitle_timing.py`、`tests/test_transitions.py`、`tests/test_mix_ad_audio.py`。最后一项包含实际混音测试，验证语音起点、末尾保留及过短画面的拒绝行为，需要本地 FFmpeg/FFprobe。
 
 ## 许可证
 
