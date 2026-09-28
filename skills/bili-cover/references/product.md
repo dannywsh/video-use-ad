@@ -5,8 +5,8 @@
 ## Composition and type
 
 - Prefer a real product/character still as the foreground so it stays recognizable. Never stretch the product to fit.
-- Preserve the reference's real colors, proportions, material, markings, costume details, and product identity. Do not redesign, change the body ratio, add accessories, or invent packaging/details. **Fidelity beats gloss: a flat-looking but proportionally accurate product passes; a glossy product with a re-engineered head/body ratio, ears, or costume structure fails.**
-- 定稿前必须把成图和商品实拍图并排比对，检查头身比、外形、服装结构及配件形状；保真度优先于画面质感。
+- 保留商品身份、主要配色、整体比例、材质观感、服装款式和关键配件，不主动改款、换装或添加商品不存在的配件。
+- **以人眼正常浏览的观感验收，不要求像素级复刻实拍图。** 定稿前将成图和参考图按相近主体大小并排查看，再检查缩略图。允许轻微脸部、表情、头身比、衣褶、纹理、光影和细小配件轮廓差异，只要一眼仍是同一款商品，整体自然，关键服装和配件可辨。不要放大找微小差异，或仅凭“AI 重画过”的判断否决结果；生成目标仍是尽量贴近实拍。
 - **Framing serves impact, not completeness.** What matters is that the product is large enough to read instantly. Show it whole when it fits at a size that still reads well. When the product is long — a tall figurine — showing the **main portion** (waist-up, three-quarter or close) is usually the *better* cover rather than a compromise: the subject gets bigger and more immediate, and that is the point. Pick whichever looks stronger. Either way the **head and face** stay inside the frame and unobscured.
 - **Leave the layout to the picture.** Two arrangements both ship, and the model picks:
   - *Split* — the title forms a block on one side, the product fills the other, no overlap.
@@ -20,24 +20,24 @@
 
 - Do not add/fix/replace type afterward (FFmpeg, PIL, Photoshop, Canva, …). Crop/resize of the generated pixels is allowed.
 - Do not forbid the title from overlapping the product, and do not require it either. Do not add empty margins around the composition.
-- Do not sacrifice product fidelity for any layout reason — not to keep the title clear, not to fit a crop, not to satisfy an instruction about who sits in front.
+- 构图不能造成明显的商品身份或版本变化；商品一致性按上述人眼验收容差判断。
 - Do not paint 云逛、口播、混剪、资讯、宣传片、广告、配方、提示词、BGM、字幕、封面 onto the image (see [广告对外文本禁词](../../../references/promo-common.md#对外文本禁词硬性)). The **generation prompt may use 封面**.
 - Do not deliver a watermark, logo, extra sentence, English, or a deformed unrecognizable product.
 
 ## Redo only if
 
-Look at **`cover.jpg`**, then at **`cover-4x3.jpg`** using the inspected continuous crop center. Ship if the product reads clearly and faithfully at thumbnail size, and the artistic title is present and readable somewhere in the 4:3.
+Look at **`cover.jpg`**, then at **`cover-4x3.jpg`** using the inspected continuous crop center. Ship if the product is clearly recognizable as the same item, looks natural at normal viewing and thumbnail size, and the artistic title is present and readable somewhere in the 4:3.
 
 **Title glyphs clipped by the 4:3 left/right edge are acceptable — do not redo for that.** The 4:3 is a secondary placement. Do not redo because the title and product overlap, a stroke/glow crosses the 4:3 edge, layout is imperfect, or a glyph is a bit ugly.
 
 Redo only when:
 
 - Canvas is not 16:9 enough for `crop_cover43.py` (script exits), or there is no image.
-- The product is the wrong item vs the reference, **or its head/body ratio, ears, costume structure or accessory shapes have been visibly re-engineered**, or it is deformed enough to be unrecognizable.
+- 商品明显是错误角色、错误款式或错误版本；或正常浏览时就能直接看出明显畸形、严重失衡的头身比、错误的主要服装结构、关键配件缺失或错形。轻微脸部、比例、衣褶和轮廓差异不属于重做条件。
 - The product's head or face is cut by the canvas edge, or is completely hidden.
 - 4:3 crop loses the product itself, or has no readable artistic title at all (missing, or clearly a different phrase than the confirmed copy).
 
-Cap redos at 3. If it is close, ship and say what is imperfect.
+重做总次数最多 3 次，这是上限，不是目标。第一张达到上述标准就采用，不为轻微差异重复生成或切换后端。触发重做前必须指出正常浏览时清楚可见的具体问题；如果需要放大、反复对比才能判断，或只怀疑主体被重绘，按通过处理。临界结果直接交付，必要时简短说明可见的不足。
 
 ## Prompt template
 
@@ -46,10 +46,10 @@ Fill every placeholder. Deliver the filled prompt, not this blank.
 ```text
 生成一张 B站视频封面。**输出必须是 16:9 宽屏（例如 1920×1080），不要生成 4:3、方形或竖图。**
 
-第一步，先看清参考图：**参考图里的<商品描述>就是最终要出现在封面上的商品照片，你的任务是把这张照片放进取景框，而不是照着它重画一个。** <外观要点，逐条写明要保住的特征：头身比、外形/耳朵、配色、材质质感、服装结构、配件形状与位置、脸部特征>。**禁止手绘化、禁止插画化、禁止重绘；上述外观特征必须与参考图一致。**
+第一步，先看清参考图：以参考图里的<商品描述>作为封面主体，优先保留商品照片的外观和实拍质感。<外观要点，简要列出主要配色、整体比例、服装款式和关键配件>。让观众一眼认出同一款商品，整体自然；允许为画面融合调整光影和少量细节，不把商品改成其他角色、款式或版本，不出现明显畸形。
 
 主题：<视频主题/产品名>
-参考素材：<产品图/角色图>。严格保留真实外观、颜色、比例、材质、纹理、服装、标记和辨识度；不得拉伸、瘦身、改色、换装、添加配件或把商品改造成不同版本，不添加无关主体。
+参考素材：<产品图/角色图>。保留主要外观、配色、整体比例、材质观感、服装款式、重要标记和辨识度；不得明显拉伸、瘦身、改色、换装、添加商品配件或把商品改造成不同版本，不添加无关主体。
 
 构图：<商品> 是主角，够大、清晰可辨——**取景服务于展示效果，不是追求把商品拍全**。能完整放进画面且够大就完整展示；长商品（比如长手办）取主体部分（半身、三分之二或近景）**效果通常更好**：主体更大、观众一眼就能看清，这是主动选择而不是妥协。头部和脸必须在画面内、不被裁切也不被完全盖死。画面尽量填满，四周不留空边。字与商品可以干净分开（字成块占一侧、商品占满另一侧），也可以互相穿插遮挡，由你按画面效果决定——只要两者在同一个画面里构成一套完整的视觉，而不是商品旁边挂一条无关的横幅。背景用干净的 <纯色/柔和渐变/少量光晕>，和商品同色系，低信息密度。
 
@@ -62,7 +62,7 @@ Fill every placeholder. Deliver the filled prompt, not this blank.
 限制：无水印、无 Logo、无英文、无乱码、无多余句子、无畸形主体、无杂乱背景。
 ```
 
-> The `第一步` paragraph is the one part worth not paraphrasing. Naming the product as *a photo to be placed in the frame rather than redrawn* is what stops the model from re-proportioning it, and the concrete appearance list only works inside that same paragraph.
+> 提示词强调同款商品和自然的实拍观感即可，不堆叠“禁止重绘”“所有细节必须完全一致”等绝对要求。验收使用正常浏览下的人眼容差，不能把提示词中的保留目标变成像素级检查。
 
 ## Delivery
 
