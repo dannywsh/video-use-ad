@@ -5,7 +5,7 @@ description: Install video-use into the current agent (Claude Code, Codex, Herme
 
 # video-use install
 
-Use this file only for first-time install or reconnect. For daily editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts live.
+Use this file only for first-time install or reconnect. For daily editing, read [SKILL.md](SKILL.md), then only the selected workflow and relevant references. Resolve helpers from the main skill root; do not infer script paths from a reference directory.
 
 ## What you're doing
 
@@ -13,7 +13,7 @@ You're setting up a conversation-driven video editor for the user. After install
 
 Three things must exist on this machine:
 
-1. This skill installed from **`dannywsh/video-use-ad`** (not upstream `browser-use/video-use`). Nested `skills/bili-cover/` ships with it.
+1. This skill installed from **`dannywsh/video-use-ad`** (not upstream `browser-use/video-use`). The root `references/` and nested `skills/bili-cover/` with its references ship with it; preserve these directories together with `helpers/`.
 2. `ffmpeg` on `$PATH` (plus optional `yt-dlp` for online sources).
 3. Credentials in the user-config `.env` (not the skill install folder): `~/.config/video-use/.env` on all platforms (Windows: `%USERPROFILE%\.config\video-use\.env`). `ELEVENLABS_API_KEY` for Scribe (default ASR), and/or `PARAFORMER_API_TOKEN` for Chinese Paraformer ASR. For default TTS add `FISH_API_KEY`. Cover backends optionally need `GCP_GEMINI_IMAGE_API_KEY` and `ARK_SEEDREAM_API_KEY`. MiMo is optional and only if the user asks for it.
 
@@ -47,7 +47,7 @@ test -d "$SKILL_ROOT" || SKILL_ROOT="${HOME}/.claude/skills/video-use"
 cd "$SKILL_ROOT"
 USER_ENV="${VIDEO_USE_ENV:-${XDG_CONFIG_HOME:-$HOME/.config}/video-use/.env}"
 mkdir -p "$(dirname "$USER_ENV")"
-python helpers/env_file.py --migrate
+python "$SKILL_ROOT/helpers/env_file.py" --migrate
 ```
 
 If the Skills CLI is unavailable, clone **this** repo and symlink the whole directory (not just `SKILL.md`):
@@ -66,7 +66,7 @@ If a copy already exists, `npx skills update -g -y` (preferred) or `git -C "$SKI
 command -v uv >/dev/null && uv sync || pip install -e .
 ```
 
-`pyproject.toml` lists `requests`, `librosa`, `matplotlib`, `pillow`, `numpy`. No console scripts — helpers are invoked directly as `python helpers/<name>.py`.
+`pyproject.toml` lists `requests`, `librosa`, `matplotlib`, `pillow`, `numpy`. No console scripts — helpers are invoked directly as `python "$SKILL_ROOT/helpers/<name>.py"`.
 
 ### 3. Install ffmpeg (+ optional yt-dlp)
 
@@ -99,83 +99,84 @@ If you can't tell which agent you're in, ask once.
 
 ### 5. API keys
 
-`USER_ENV` is `~/.config/video-use/.env` on all platforms, including Windows `%USERPROFILE%\.config\video-use\.env` (`python helpers/env_file.py --user-path` prints it). Create the parent dir if needed. Write keys to `"$USER_ENV"`. Never print a key. Never commit `.env`. Do not clobber an existing `.env`. Do not write keys into `$SKILL_ROOT` — `npx skills update` deletes that directory.
+Resolve `USER_ENV` with `python "$SKILL_ROOT/helpers/env_file.py" --user-path`; it is normally `~/.config/video-use/.env` (Windows `%USERPROFILE%\.config\video-use\.env`), with `VIDEO_USE_ENV` / `XDG_CONFIG_HOME` overrides. Create the parent directory if needed. Write supplied keys there, never into the skill directory or footage directory. Never print a key, its prefix or the contents of `.env`; never commit `.env` or clobber unrelated entries.
 
-Transcription has two providers. Scribe (ElevenLabs) is the default. Paraformer is optional for Chinese TTS subtitle timing. Default TTS is Fish Audio. Cover generation uses `skills/bili-cover/` (`GCP_GEMINI_IMAGE_API_KEY`, `ARK_SEEDREAM_API_KEY`). MiMo is opt-in only.
+Transcription uses ElevenLabs Scribe by default, or Paraformer for Chinese ASR. Default TTS is Fish Audio. Product image backends optionally need Gemini or Seedream credentials; official poster mode does not. MiMo is opt-in only.
+
+#### Credential discovery before asking the user
+
+Use the existing `env_file.load_env_value` parser. Lookup order remains user-config `.env` → leftover skill-root `.env` → current-directory `.env` → process environment. Whitespace around names/values and quoted values are accepted; empty or whitespace-only values are missing. Do not use a strict `^KEY=` search or read tokens with `sed`.
+
+For example, check only the names needed for the selected task. This example reports presence, not values, and disables migration during the read-only check (the initial migration is in the installation step):
+
+```bash
+python - "$SKILL_ROOT" ELEVENLABS_API_KEY FISH_API_KEY <<'PYTHON'
+import sys
+from pathlib import Path
+
+# 输入技能根目录和凭证名；使用已有解析器，仅输出是否配置，不输出凭证内容。
+sys.path.insert(0, str(Path(sys.argv[1]) / "helpers"))
+from env_file import load_env_value
+
+for name in sys.argv[2:]:
+    status = "configured" if load_env_value(name, migrate=False) else "missing"
+    print(f"{name}: {status}")
+PYTHON
+```
+
+Only if the relevant value is missing, ask for it and update that entry in `USER_ENV`. Use the same parser semantics to locate the entry: strip whitespace from the name before comparing, replace an empty entry instead of appending a duplicate, preserve unrelated lines, and write the supplied value without logging it. On Unix restrict the file to owner read/write with `chmod 600 "$USER_ENV"`.
 
 #### ElevenLabs (default ASR + ElevenLabs TTS)
 
-1. Check existing state and stop at the first hit:
+Check `ELEVENLABS_API_KEY` with the parser above. If missing, ask once for a key from https://elevenlabs.io/app/settings/api-keys and save it in `USER_ENV`.
 
-    ```bash
-    [ -n "$ELEVENLABS_API_KEY" ] && echo "env"
-    grep -q '^ELEVENLABS_API_KEY=..' "$USER_ENV" 2>/dev/null && echo "dotenv"
-    ```
+Use the same resolved value for the existing quota-free user check; do not extract it using a strict shell pattern or display it:
 
-2. If neither is set, ask the user exactly once for a key from https://elevenlabs.io/app/settings/api-keys and append it:
+```bash
+python - "$SKILL_ROOT" <<'PYTHON'
+import sys
+from pathlib import Path
+import requests
 
-    ```bash
-    touch "$USER_ENV"
-    grep -q '^ELEVENLABS_API_KEY=' "$USER_ENV" \
-      || printf 'ELEVENLABS_API_KEY=%s\n' "$KEY" >> "$USER_ENV"
-    chmod 600 "$USER_ENV" 2>/dev/null || true
-    ```
+# 输入技能根目录；从已有解析器取得凭证，只输出用户接口的 HTTP 状态码。
+sys.path.insert(0, str(Path(sys.argv[1]) / "helpers"))
+from env_file import load_env_value
 
-3. Sanity check with a cheap, quota-free call:
+key = load_env_value("ELEVENLABS_API_KEY", migrate=False)
+if not key:
+    raise SystemExit("ELEVENLABS_API_KEY is missing")
+response = requests.get(
+    "https://api.elevenlabs.io/v1/user",
+    headers={"xi-api-key": key},
+    timeout=30,
+)
+print(response.status_code)
+PYTHON
+```
 
-    ```bash
-    curl -s -o /dev/null -w '%{http_code}\n' \
-      -H "xi-api-key: $(sed -n 's/^ELEVENLABS_API_KEY=//p' "$USER_ENV")" \
-      https://api.elevenlabs.io/v1/user
-    ```
-
-    `200` means the key works. `401` means ask once more and stop.
-
-If the user only needs Chinese TTS subtitle timing and already has a Paraformer token, Scribe can be skipped for now.
+`200` means the key works. `401` means ask once more and stop. If Chinese TTS timing is the only ASR need and Paraformer is already configured, Scribe can be skipped for now.
 
 #### Paraformer (optional — Chinese ASR)
 
-Hosted FunASR Paraformer-large. Default URL is `https://paraformer.ow2shit.top`.
+Check `PARAFORMER_API_TOKEN` with the same parser; ask only if it is required and missing, then update that entry in `USER_ENV`. Optional `PARAFORMER_API_URL` overrides the default `https://paraformer.ow2shit.top`; retain an existing override.
 
-    ```bash
-    [ -n "$PARAFORMER_API_TOKEN" ] && echo "env"
-    grep -q '^PARAFORMER_API_TOKEN=..' "$USER_ENV" 2>/dev/null && echo "dotenv"
-    touch "$USER_ENV"
-    grep -q '^PARAFORMER_API_TOKEN=' "$USER_ENV" \
-      || printf 'PARAFORMER_API_TOKEN=%s\n' "$PARAFORMER_TOKEN" >> "$USER_ENV"
-    grep -q '^PARAFORMER_API_URL=' "$USER_ENV" \
-      || printf 'PARAFORMER_API_URL=%s\n' 'https://paraformer.ow2shit.top' >> "$USER_ENV"
-    chmod 600 "$USER_ENV" 2>/dev/null || true
-    curl -s -o /dev/null -w '%{http_code}\n' https://paraformer.ow2shit.top/health
-    ```
+The original read-only health check is:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://paraformer.ow2shit.top/health
+```
 
 #### Fish Audio (default TTS)
 
-    ```bash
-    grep -q '^FISH_API_KEY=' "$USER_ENV" \
-      || printf 'FISH_API_KEY=%s\n' "$FISH_KEY" >> "$USER_ENV"
-    chmod 600 "$USER_ENV" 2>/dev/null || true
-    ```
+Check `FISH_API_KEY` with the same parser and update the corresponding entry only if missing. Default Fish Audio voice clones stay private.
 
-#### Cover backends (optional until a Bilibili cover is required)
+#### Cover backends (optional until a product cover is required)
 
-    ```bash
-    grep -q '^GCP_GEMINI_IMAGE_API_KEY=' "$USER_ENV" \
-      || printf 'GCP_GEMINI_IMAGE_API_KEY=%s\n' "$GCP_GEMINI_IMAGE_API_KEY" >> "$USER_ENV"
-    grep -q '^ARK_SEEDREAM_API_KEY=' "$USER_ENV" \
-      || printf 'ARK_SEEDREAM_API_KEY=%s\n' "$ARK_SEEDREAM_API_KEY" >> "$USER_ENV"
-    ```
-
-Empty values count as missing. Model / endpoint overrides are in `.env.example`.
+Check `GCP_GEMINI_IMAGE_API_KEY` / `ARK_SEEDREAM_API_KEY` only for a selected product image backend. Ask only after the same lookup finds no non-empty value, and update the relevant entry. Official poster mode needs neither image key. Model / endpoint overrides remain in `.env.example`.
 
 #### MiMo (opt-in only)
 
-Ask for `MIMO_API_KEY` only if the user explicitly wants MiMo.
-
-    ```bash
-    grep -q '^MIMO_API_KEY=' "$USER_ENV" \
-      || printf 'MIMO_API_KEY=%s\n' "$MIMO_KEY" >> "$USER_ENV"
-    ```
+Check and ask for `MIMO_API_KEY` only if the user explicitly wants MiMo; use the same parser and persistence rules.
 
 ### 6. Verify end-to-end
 
@@ -195,7 +196,7 @@ Tell the user, in one short message:
 - Skill root (`$SKILL_ROOT`, usually `~/.agents/skills/video-use`).
 - `cd` into the footage folder and start the agent there.
 - A good first message: *"edit these into a launch video"* or *"inventory these takes and propose a strategy."*
-- Outputs and generated editing projects land in `<videos_dir>/edit/`. This includes animation source projects, configs, local dependencies, caches, downloaded media, previews, and final files; keep the footage folder root and the skill repository free of session-generated files.
+- Daily work starts at [SKILL.md](SKILL.md): ordinary edits read [general-edit.md](references/general-edit.md); promos read [promo-common.md](references/promo-common.md) and the applicable [product](references/product.md) or [event](references/convention.md) reference. Convention, concert and game-expo titles follow the [event title instructions](references/convention.md#活动视频标题): filter fact-supported angles, then let the model choose one suitable angle directly without a random-selection script, and deliver one title. TTS, animations, EDL, covers and publishing are loaded only when needed. Outputs and generated editing projects land in `<videos_dir>/edit/`. Before production, create `<videos_dir>/edit/tmp/` and set `TMPDIR`, `TMP`, `TEMP` to that absolute path for every execution session and animation agent. This includes animation source projects, configs, local dependencies, caches, downloaded media, previews, and final files; keep the footage folder root and the skill repository free of session-generated files.
 
 ## Keeping the skill current
 

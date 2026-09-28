@@ -1,6 +1,6 @@
 # Google Cloud Gemini image API (gcp-gemini)
 
-Backend ID: `gcp-gemini`. Script: `skills/bili-cover/scripts/gcp_gemini_image.py`.
+Backend ID: `gcp-gemini`. Script: `<skill_root>/skills/bili-cover/scripts/gcp_gemini_image.py`.
 
 Cover generation uses this contract. Do not swap in AI Studio `generativelanguage.googleapis.com` or Vertex regional `projects/{id}/locations/...` URLs unless the user changes `GCP_GEMINI_IMAGE_API_ENDPOINT` / model.
 
@@ -71,7 +71,7 @@ Defaults:
 - Text prompt is a `text` part. Reference stills are extra `inline_data` parts (`mime_type` + base64). Local files: JPEG / PNG / WEBP; max 14 images (model limit). Use `inline_data` even if some docs show `inlineData` / `fileData`.
 - Cover **must** set `imageConfig.aspectRatio` to `16:9` (do not use the official sample’s `"auto"` for Bilibili covers). Supported ratios include 1:1 through 21:9; `16:9` is valid.
 - `imageSize`: `1K` (default) / `2K` / `4K` via `GCP_GEMINI_IMAGE_SIZE` or `--size`.
-- `imageOutputOptions.mimeType`: `image/jpeg` for `cover.jpg`. After a successful 16:9 write, crop `cover-4x3.jpg` with `scripts/crop_cover43.py`; do not request `aspectRatio=4:3`.
+- `imageOutputOptions.mimeType`: `image/jpeg` for `cover.jpg`. After a successful 16:9 write, crop `cover-4x3.jpg` with `<skill_root>/skills/bili-cover/scripts/crop_cover43.py`; do not request `aspectRatio=4:3`.
 - `personGeneration`: `ALLOW_ALL` (ACG figures / people in stills).
 - `responseModalities`: both `TEXT` and `IMAGE`.
 - `thinkingConfig.thinkingLevel`: `MINIMAL`.
@@ -106,9 +106,9 @@ Read `inlineData` or `inline_data`. Decode `data` and write `--output`. If no im
 ## CLI
 
 ```bash
-python skills/bili-cover/scripts/gcp_gemini_image.py \
+python "<skill_root>/skills/bili-cover/scripts/gcp_gemini_image.py" \
   --prompt "..." \
-  --output /path/to/edit/cover.jpg \
+  --output "<edit>/cover.jpg" \
   --reference-image /path/to/product.jpg \
   --aspect-ratio 16:9 \
   --size 1K

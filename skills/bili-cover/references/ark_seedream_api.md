@@ -1,6 +1,6 @@
 # Ark Seedream image API (ark-seedream)
 
-Backend ID: `ark-seedream`. Script: `skills/bili-cover/scripts/ark_seedream_generate.js` (Node.js 18+).
+Backend ID: `ark-seedream`. Script: `<skill_root>/skills/bili-cover/scripts/ark_seedream_generate.js` (Node.js 18+).
 
 Cover work is usually one 16:9 still (`sequential=false`). The HTTP/CLI surface below is the full Seedream Agent Plan image API; keep using it when the user asks for i2i or a coherent set.
 
@@ -93,7 +93,7 @@ Right: `prompt: "生成4张一组的连贯插画：春天的樱花、夏天的�
 ## CLI
 
 ```bash
-node skills/bili-cover/scripts/ark_seedream_generate.js \
+node "<skill_root>/skills/bili-cover/scripts/ark_seedream_generate.js" \
   --prompt "一只可爱的小猫" \
   --size "2K" \
   --mode "text-to-image" \
@@ -106,7 +106,7 @@ node skills/bili-cover/scripts/ark_seedream_generate.js \
 Coherent set + stream:
 
 ```bash
-node skills/bili-cover/scripts/ark_seedream_generate.js \
+node "<skill_root>/skills/bili-cover/scripts/ark_seedream_generate.js" \
   --prompt "生成4张一组的连贯插画：同一地点的春夏秋冬，统一画风，保持风格一致" \
   --sequential true \
   --count 4 \
@@ -139,7 +139,7 @@ stderr = progress. stdout = JSON:
   "images": [
     {
       "url": "https://...",
-      "local_path": "/path/to/edit/seedream_123_1.jpg",
+      "local_path": "<edit>/seedream_123_1.jpg",
       "download_success": true
     }
   ],
@@ -153,4 +153,4 @@ stderr = progress. stdout = JSON:
 }
 ```
 
-Parse stdout; show local paths to the user. Cover delivery copies/renames the first JPEG to `<videos_dir>/edit/cover.jpg`, then crops `<videos_dir>/edit/cover-4x3.jpg` with `scripts/crop_cover43.py`. Do not use `sequential` for a 4:3 twin.
+Parse stdout; show local paths to the user. Cover delivery copies/renames the first JPEG to `<edit>/cover.jpg`, then crops `<edit>/cover-4x3.jpg` with `<skill_root>/skills/bili-cover/scripts/crop_cover43.py`. Do not use `sequential` for a 4:3 twin.
