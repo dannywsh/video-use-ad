@@ -21,7 +21,7 @@
 - Do not add/fix/replace type afterward (FFmpeg, PIL, Photoshop, Canva, …). Crop/resize of the generated pixels is allowed.
 - Do not forbid the title from overlapping the product, and do not require it either. Do not add empty margins around the composition.
 - 构图不能造成明显的商品身份或版本变化；商品一致性按上述人眼验收容差判断。
-- Do not paint 云逛、口播、混剪、资讯、宣传片、广告、配方、提示词、BGM、字幕、封面 onto the image (see [广告对外文本禁词](../../../references/promo-common.md#对外文本禁词硬性)). The **generation prompt may use 封面**.
+- Do not paint 云逛、口播、混剪、资讯、宣传片、广告、配方、提示词、BGM、字幕、封面 onto the image (see [广告对外文本禁词](../../../SKILL.md#对外文本禁词硬性)). The **generation prompt may use 封面**.
 - Do not deliver a watermark, logo, extra sentence, English, or a deformed unrecognizable product.
 
 ## Redo only if
