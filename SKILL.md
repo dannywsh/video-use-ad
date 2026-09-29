@@ -482,7 +482,7 @@ Match the source unless the user asked for something specific. Common targets: `
 
 **Do not shift fixed TTS captions to chase the dissolve.** Promo/TTS subtitles are locked to the final narration audio (Hard Rule 13). Default `--keep-duration` adds the overlap as a freeze/tail on the outgoing clip so each transition starts at the original cut point and the programme retains its authored length. The promo joiner uses `--an`; the separate narration does not move with the visual clips. Shortening the picture does not justify subtracting overlaps from these captions. Only disable handles when you intend to shorten the picture and re-time or regenerate the voiceover and subtitles together.
 
-广告混音前，`mix_ad_audio.py` 检查视频流时长是否覆盖完整口播音轨；画面过短时直接失败，禁止静默裁掉末句。正常情况下继续使用默认保留时长；检查失败时修正画面时间窗，或按已确定的目标时长重做完整口播及其词级对齐字幕。不要只提前字幕；检查本身不自动裁切或改变口播速度。混音限幅器启用延迟补偿，字幕仍沿用最终口播音频的时间戳。
+Before the promo mix, `mix_ad_audio.py` checks that the video stream is long enough to cover the full narration track; if the picture is too short it fails outright — never silently trim the last sentence. Keep the default duration-preserving behavior on a normal pass. On a failed check, fix the picture time windows, or regenerate the full narration and its word-aligned subtitles to the confirmed target length. Do not only pull captions earlier; the check itself does not auto-trim or retime the narration. The mix limiter uses delay compensation; captions keep the final narration audio's timestamps.
 
 ## Memory — `project.md`
 
@@ -543,8 +543,6 @@ The rules here are production standards, not taste. For ordinary goods, product/
 - **普通售价默认不出现在对外文本**：除非用户明确要求，商品标价不得写入口播、烧录字幕、标题、投稿简介、商品封面新增文字或标签；官方漫展海报封面允许保留原有票价。用户要求纳入促销时，可写促销券面金额与门槛，但不可据此计算或承诺最终到手价。不要用“低价”“划算”等话术制造购买承诺。
 - **结尾引导了解详情**：视频文案或商品简介可自然引导观众点击评论区链接；商品挂载卡片的链接前文案应称“商品链接”或直接说“点链接”，不要说“评论区”。不要在视频里替观众把所有优惠规则讲完。
 - **写作自测**：若删掉数字和商品属性后，普通商品的文案反而更像角色/商品介绍，就删掉这些数字和属性；文案应围绕角色/商品与已核实活动展开。
-
-未开始活动的购物车提醒只用于观众文案，不增加自动加车操作；仅在目标商品支持加入购物车时使用该引导。券门槛、资格和目标 SKU 仍须核实，不承诺人人优惠或到手价。
 
 ### 输入参数
 
@@ -724,9 +722,9 @@ The rules here are production standards, not taste. For ordinary goods, product/
 
 - 标题开头必须是“具体卖点／产品特质 + 强烈感受”的完整短句，再用感叹号衔接产品名。普通商品优先写角色、设定、外观或气质，不得用价格或参数堆砌标题；数码电子等功能型产品可用经核实的功能卖点或技术参数作为标题核心。优先让卖点本身成为钩子，例如“桌面萌力超标！”“压迫感炸场！”“反差萌拉满！”。禁止使用“救命啊”“谁顶得住”“我破防了”等空泛语气词作为开头。
 - 必须露出产品具体名或圈内昵称；只使用本商品自带的 IP、角色或圈层称呼。
-- **名称要短，但不能短到认不出出处**：手办标题保留作品/IP 名、角色名，以及区分商品所需的版本和品类；尤其作品名是角色出处时，不得为缩短标题而删掉。优先删厂商、系列和营销赘词；不要缩写或截断作品名、角色名。
+- **名称要短，但不能短到认不出出处**：手办标题保留作品/IP 名、角色名，以及区分商品所需的版本和品类；尤其作品名是角色出处时，不得为缩短标题而删掉。当厂商、系列和营销赘词过长时，可以考虑删掉；不要缩写或截断作品名、角色名。
 - **标题前段就能认出商品**：钩子后写“作品/IP 名＋角色名＋必要版本＋品类＋内容后缀”，删去重复信息即可，不要求照抄商品详情页全名。示例：`neonmax 蔚蓝档案 夜樱绮罗罗 纪念大厅Ver. 1/7手办` → `松弛感满分！《蔚蓝档案》夜樱绮罗罗纪念大厅手办推荐`。
-- **商品名后优先加推荐类后缀**：这些视频定位是商品推荐，即使主要展示外观或细节，标题也优先使用“推荐”“好物推荐”“周边推荐”等简短词语，默认不用“鉴赏”“赏析”。根据品类与读起来是否自然选一个，避免“手办手办推荐”“周边周边推荐”等重复；不堆叠后缀，不额外追加一整句情绪文案。没有实际开箱、上手或测试内容时，不写“开箱”“实测”“测评”；不使用“必买”“闭眼入”等购买承诺。
+- **商品名后优先加推荐类后缀**：这些视频定位是商品推荐，即使主要展示外观或细节，标题也优先使用“推荐”“好物推荐”“周边推荐”等简短词语。根据品类与读起来是否自然选一个，避免“手办手办推荐”“周边周边推荐”等重复；不堆叠后缀，不额外追加一整句情绪文案。没有实际开箱、上手或测试内容时，不写“开箱”“实测”“测评”；不使用“必买”“闭眼入”等购买承诺。
 - 用反差或悬念时，必须来自这件商品的外观或用途，不得使用“最”“第一”“100%”等绝对化表述。
 - 文风应像真人发布：简洁、口语化、信息具体；不堆砌标签，不使用营销腔和标题党式承诺
 
