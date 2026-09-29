@@ -4,7 +4,7 @@
 
 ## Composition and type
 
-- 实物商品封面必须用商品实物图作为参考，不能用动画或角色插画代替。保留脸部特征、头身比例、主要服装结构和关键配件；不要求像素级复刻，衣褶和轮廓的轻微差异可以接受。
+- Product covers must use a real product photo as the reference — never substitute anime or character illustration. Keep facial features, body proportions, main outfit structure, and key accessories; pixel-perfect replication is not required, and slight differences in folds or silhouette are acceptable.
 - **Framing serves impact, not completeness.** What matters is that the product is large enough to read instantly. Show it whole when it fits at a size that still reads well. When the product is long — a tall figurine — showing the **main portion** (waist-up, three-quarter or close) is usually the *better* cover rather than a compromise: the subject gets bigger and more immediate, and that is the point. Pick whichever looks stronger. Either way the **head and face** stay inside the frame and unobscured.
 - **Leave the layout to the picture.** Two arrangements both ship, and the model picks:
   - *Split* — the title forms a block on one side, the product fills the other, no overlap.
@@ -18,27 +18,32 @@
 
 - Do not add/fix/replace type afterward (FFmpeg, PIL, Photoshop, Canva, …). Crop/resize of the generated pixels is allowed.
 - Do not forbid the title from overlapping the product, and do not require it either. Do not add empty margins around the composition.
-- 构图不能造成明显的商品身份或版本变化；商品一致性按上述人眼验收容差判断。
+- Do not compose in a way that clearly changes the product's identity or version; judge product consistency by the human-eye tolerance above.
 - Do not paint 云逛、口播、混剪、资讯、宣传片、广告、配方、提示词、BGM、字幕、封面 onto the image (see [广告对外文本禁词](../../../SKILL.md#对外文本禁词硬性)). The **generation prompt may use 封面**.
 - Do not deliver a watermark, logo, extra sentence, English, or a deformed unrecognizable product.
 
 ## Redo only if
 
-并排对照实物参考图检查 **`cover.jpg`**，再按已检查的连续裁切中心查看 **`cover-4x3.jpg`**。确认脸部、头身比例、整体比例、主要服装结构和关键配件与商品相符；衣褶和轮廓轻微差异可以接受。封面标题须在 4:3 中存在且可读。
+**How to check.** Side-by-side against the product reference photo: inspect **`cover.jpg`**, then **`cover-4x3.jpg`** at the already-verified continuous crop center. Confirm facial features, body proportions, overall proportions, main outfit structure, and key accessories match the product. Slight differences in folds or silhouette are fine. The cover title must exist and be readable in the 4:3.
 
-**Title glyphs clipped by the 4:3 left/right edge are acceptable — do not redo for that.** The 4:3 is a secondary placement. Do not redo because the title and product overlap, a stroke/glow crosses the 4:3 edge, layout is imperfect, or a glyph is a bit ugly.
+**Do not redo for.** The 4:3 is a secondary placement. Acceptable without a redo:
 
-Redo only when:
+- Title glyphs clipped by the 4:3 left/right edge
+- Title overlapping the product
+- A stroke or glow crossing the 4:3 edge
+- Imperfect layout or a slightly ugly glyph
+- Slight fold or silhouette differences vs the reference
 
-- Canvas is not 16:9 enough for `crop_cover43.py` (script exits), or there is no image.
-- 头身比严重失衡，或整体比例与商品不符。
-- 主要服装结构错误，或关键配件缺失、错形。
-- 脸部与商品不一致。
-- 衣褶和轮廓的轻微差异不属于重做条件。
-- The product's head or face is cut by the canvas edge, or is completely hidden.
-- 4:3 crop loses the product itself, or has no readable artistic title at all (missing, or clearly a different phrase than the confirmed copy).
+**Redo only when** any of these is true:
 
-重做总次数最多 3 次。命中上述任一条件时切换下一个生图后端，并继续使用同一张实物参考图；未命中则通过。达到次数上限仍不合格时停止封面流程并说明原因。
+- No image, or canvas is not 16:9 enough for `crop_cover43.py` (script exits)
+- Body proportions are badly wrong, or overall proportions do not match the product
+- Main outfit structure is wrong, or a key accessory is missing / misshapen
+- Face does not match the product
+- Head or face is cut by the canvas edge, or completely hidden
+- 4:3 crop loses the product itself, or has no readable artistic title (missing, or clearly a different phrase than the confirmed copy)
+
+**Retry policy.** At most 3 redos total. On a hit, switch to the next image backend and keep the same product reference photo. No hit → pass. Still failing after the limit → stop the cover flow and explain why.
 
 ## Prompt template
 
@@ -63,8 +68,8 @@ Fill every placeholder. Deliver the filled prompt, not this blank.
 限制：无水印、无 Logo、无英文、无乱码、无多余句子、无畸形主体、无杂乱背景。
 ```
 
-> 提示词强调脸部、比例、主要服装结构和关键配件与实物相符；允许衣褶和轮廓有轻微差异，不要求像素级复刻。
+> The prompt stresses that face, proportions, main outfit structure, and key accessories match the physical product; slight fold or silhouette differences are allowed — pixel-perfect replication is not required.
 
 ## Delivery
 
-除两张封面外，交付实际使用的完整提示词，不交付空模板。
+Besides the two covers, deliver the filled prompt that was actually used — not this blank template.
