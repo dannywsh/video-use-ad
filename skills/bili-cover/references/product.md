@@ -4,7 +4,7 @@
 
 ## Composition and type
 
-- Prefer a real product/character still as the foreground so it stays recognizable. Never stretch the product to fit.
+- 实物商品封面必须把该商品的实物照片作为生图参考和画面主体，优先用素材中的商品主图；动画或角色插画不能代替实物参考。Never stretch the product to fit.
 - 保留商品身份、主要配色、整体比例、材质观感、服装款式和关键配件，不主动改款、换装或添加商品不存在的配件。
 - **以人眼正常浏览的观感验收，不要求像素级复刻实拍图。** 定稿前将成图和参考图按相近主体大小并排查看，再检查缩略图。允许轻微脸部、表情、头身比、衣褶、纹理、光影和细小配件轮廓差异，只要一眼仍是同一款商品，整体自然，关键服装和配件可辨。不要放大找微小差异，或仅凭“AI 重画过”的判断否决结果；生成目标仍是尽量贴近实拍。
 - **Framing serves impact, not completeness.** What matters is that the product is large enough to read instantly. Show it whole when it fits at a size that still reads well. When the product is long — a tall figurine — showing the **main portion** (waist-up, three-quarter or close) is usually the *better* cover rather than a compromise: the subject gets bigger and more immediate, and that is the point. Pick whichever looks stronger. Either way the **head and face** stay inside the frame and unobscured.
@@ -46,10 +46,10 @@ Fill every placeholder. Deliver the filled prompt, not this blank.
 ```text
 生成一张 B站视频封面。**输出必须是 16:9 宽屏（例如 1920×1080），不要生成 4:3、方形或竖图。**
 
-第一步，先看清参考图：以参考图里的<商品描述>作为封面主体，优先保留商品照片的外观和实拍质感。<外观要点，简要列出主要配色、整体比例、服装款式和关键配件>。让观众一眼认出同一款商品，整体自然；允许为画面融合调整光影和少量细节，不把商品改成其他角色、款式或版本，不出现明显畸形。
+第一步，先看清参考图：实物商品必须以该商品的实物照片作为参考和封面主体，不能用动画截图或角色插画代替。优先保留商品照片的外观和实拍质感。<外观要点，简要列出主要配色、整体比例、服装款式和关键配件>。让观众一眼认出同一款商品，整体自然；允许为画面融合调整光影和少量细节，不把商品改成其他角色、款式或版本，不出现明显畸形。
 
 主题：<视频主题/产品名>
-参考素材：<产品图/角色图>。保留主要外观、配色、整体比例、材质观感、服装款式、重要标记和辨识度；不得明显拉伸、瘦身、改色、换装、添加商品配件或把商品改造成不同版本，不添加无关主体。
+参考素材：<实物商品图>。保留主要外观、配色、整体比例、材质观感、服装款式、重要标记和辨识度；不得明显拉伸、瘦身、改色、换装、添加商品配件或把商品改造成不同版本，不添加无关主体。
 
 构图：<商品> 是主角，够大、清晰可辨——**取景服务于展示效果，不是追求把商品拍全**。能完整放进画面且够大就完整展示；长商品（比如长手办）取主体部分（半身、三分之二或近景）**效果通常更好**：主体更大、观众一眼就能看清，这是主动选择而不是妥协。头部和脸必须在画面内、不被裁切也不被完全盖死。画面尽量填满，四周不留空边。字与商品可以干净分开（字成块占一侧、商品占满另一侧），也可以互相穿插遮挡，由你按画面效果决定——只要两者在同一个画面里构成一套完整的视觉，而不是商品旁边挂一条无关的横幅。背景用干净的 <纯色/柔和渐变/少量光晕>，和商品同色系，低信息密度。
 

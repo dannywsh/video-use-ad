@@ -37,13 +37,14 @@ python "<skill_root>/skills/bili-cover/scripts/crop_cover43.py" \
 
 `--crop-center-x` is required. The LLM must provide the value after inspecting the actual cover; do not substitute a fixed preset.
 
-## Product backends and credentials
+## Product references, backends and credentials
 
 仅 `product` 模式选择生图后端并检查相关凭证；`poster` 模式跳过本节及生图调用。
 
-- Backend order (user-named backend wins): **`native`** → **`gcp-gemini`** → **`ark-seedream`**. Fall through on missing keys, errors, or a result that fails the applicable mode reference's inspection criteria. Aliases: Gemini/Google/Vertex → `gcp-gemini`; Seedream/豆包/方舟 → `ark-seedream`. Do not start at Seedream unless named. Grok: `image_gen` / `image_edit`. Codex: `$imagegen` built-in `image_gen` (not Codex `scripts/image_gen.py`).
+- **实物商品必须用实物商品图作为生图参考图**：优先选素材目录中的商品主图或清晰实拍图；每次切换后端都继续传入同一组实物参考图。动画截图、角色插画不能代替商品实物图，也不能因某个模型拒绝或失败就改用动画图生成封面。
+- Backend order (user-named backend wins): **`native`（ChatGPT）** → **`gcp-gemini`** → **`ark-seedream`**. 当前后端因拒绝、错误、缺少密钥或结果不合格而无法出图时，立即用下一后端和实物参考图重试；不得重复调用已失败后端。用户指定后端时优先使用该后端，失败后仍按顺序尝试其余后端。Aliases: Gemini/Google/Vertex → `gcp-gemini`; Seedream/豆包/方舟 → `ark-seedream`. Do not start at Seedream unless named. Codex: `$imagegen` built-in `image_gen` (not Codex `scripts/image_gen.py`).
 
-- 商品结果只因 [商品验收规则](references/product.md#redo-only-if) 中的明显问题判失败；轻微差异或怀疑被重绘不触发重做或后端切换。首张合格即结束生成。
+- 商品结果只因 [商品验收规则](references/product.md#redo-only-if) 中的明显问题判失败；轻微差异或怀疑被重绘不触发重做或后端切换。首张合格即结束生成。所有后端都无法生成时，停止封面流程并报告原因；不得改用动画图冒充商品封面。
 
 - Credentials: same lookup as parent TTS (`~/.config/video-use/.env` → leftover skill-root `.env` → cwd `.env` → env). Never print a key. Ask only after lookup fails. `GCP_GEMINI_IMAGE_API_KEY` (model default `gemini-3.1-flash-lite-image`, size `1K`); `ARK_SEEDREAM_API_KEY` (model default `doubao-seedream-5.0-lite`). Optional overrides in `.env.example`.
 
