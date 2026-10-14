@@ -62,11 +62,15 @@ If a copy already exists, `npx skills update -g -y` (preferred) or `git -C "$SKI
 
 ### 2. Install Python deps
 
-```bash
-command -v uv >/dev/null && uv sync || pip install -e .
+Use the user's existing Python environment. `python` below means the interpreter that will run the helpers; replace it with `py`, `python3`, or the virtual environment's executable as appropriate. These single-line commands work on Windows, macOS, and Linux; no uv installation is required.
+
+```text
+python -m pip install -e "<skill_root>"
 ```
 
-`pyproject.toml` lists `requests`, `librosa`, `matplotlib`, `pillow`, `numpy`. No console scripts — helpers are invoked directly as `python "$SKILL_ROOT/helpers/<name>.py"`.
+Replace `<skill_root>` with the absolute skill directory. To create an isolated environment, use `python -m venv "<skill_root>/.venv"`; its interpreter is `.venv/Scripts/python.exe` on Windows and `.venv/bin/python` on macOS/Linux. A quoted interpreter path needs the `&` call operator in PowerShell. If uv is already in use, `uv sync --project "<skill_root>"` is an optional alternative.
+
+`pyproject.toml` lists the Python dependencies, including `fonttools` for prize templates. No console scripts — helpers are invoked directly as `python "<skill_root>/helpers/<name>.py"`. Multiline shell examples elsewhere use Bash syntax; combine them into a single line when using Windows shells.
 
 ### 3. Install ffmpeg (+ optional yt-dlp)
 
@@ -209,7 +213,7 @@ python "$SKILL_ROOT/helpers/env_file.py" --migrate
 npx skills update -g -y
 ```
 
-If `pyproject.toml` changed deps, re-run `uv sync` / `pip install -e .` in `$SKILL_ROOT` after updating. A git clone can `git pull --ff-only` instead of the CLI (that path does not wipe `.env`).
+If `pyproject.toml` changed deps, re-run `python -m pip install -e "<skill_root>"` in the selected Python environment after updating; existing uv users can run `uv sync --project "<skill_root>"`. A git clone can `git pull --ff-only` instead of the CLI (that path does not wipe `.env`).
 
 ## Cold-start reminders
 

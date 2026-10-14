@@ -10,6 +10,8 @@
 
 ## 功能特性
 
+- **魔力赏／一番赏竖屏视频**：接口采集真实奖品，可扩展 React / Remotion 模板生成 1080×1920、30fps 商品卡；支持奖级配色、参考价及同档合并。
+
 - **自动去除填充词**（`嗯`、`啊`、结巴重复）和镜头间的空白
 - **自动调色**每段素材（暖调电影感、中性通透，或自定义 ffmpeg 链）
 - **静态商品图动态展示**，支持中心推近、详情长图纵向滚动和宽图横向扫镜
@@ -79,13 +81,15 @@ npx skills update -g -y
 
 仅当不使用 Skills CLI 时：
 
+Python 依赖使用 `python -m pip install -e "<skill_root>"` 安装到用户选定的环境，不要求 uv。Windows 可用 `py`，macOS/Linux 可用 `python3`；使用虚拟环境时激活它或指定其解释器路径。以下符号链接和系统包命令用于 macOS/Linux，Windows 推荐使用上面的 Skills CLI 安装，并将 FFmpeg 加入 PATH。
+
 ```bash
 git clone https://github.com/dannywsh/video-use-ad <skill_root>
 ln -sfn <skill_root> ~/.claude/skills/video-use     # Claude Code
 # ln -sfn <skill_root> ~/.codex/skills/video-use    # Codex
 
 cd <skill_root>
-uv sync                         # 或：pip install -e .
+python -m pip install -e .       # 使用已选定的 Python 环境；uv sync 为可选方式
 brew install ffmpeg             # 必需
 brew install yt-dlp             # 可选，用于下载在线素材
 
@@ -106,7 +110,7 @@ video-use-ad/
 ├── references/           # 仅保留题材细节
 │   ├── product.md        # 手办／普通商品，含数码与功能型商品例外
 │   ├── convention.md     # 展会／音乐会等活动的叙事、选材与标题
-│   └── lottery.md        # 一番赏／魔力赏，沿用已有随机奖励约束
+│   └── lottery.md        # 一番赏／魔力赏竖屏：采集、图质评估、商品卡及字幕
 ├── install.md            # 首次安装指引
 ├── helpers/              # 核心脚本
 │   ├── transcribe.py         # ASR：ElevenLabs Scribe 或 Paraformer
@@ -214,6 +218,23 @@ MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，�
 ```
 
 从 [`SKILL.md`](SKILL.md) 选择模式，通用流程一次读取后在本会话复用。广告任务执行主文件中的 [共用制作流程](SKILL.md#bilibili-product-promo-hard-recipe)，再仅读取适用的 [商品要求](references/product.md)、[活动要求](references/convention.md) 或 [一番赏／魔力赏要求](references/lottery.md)，不逐阶段搜索通用参考文件。封面由 [bili-cover](skills/bili-cover/SKILL.md) 按对应模式处理：商品生成一张 16:9，查看构图后选择连续 `crop_center_x` 裁出 4:3；漫展直接使用官方宣传图，保留其原有文字、Logo、英文及票价，不调用生图。封面后端与 Manim 子技能仍保留实际使用的专业说明。
+
+### 魔力赏／一番赏工具
+
+使用现有 helper 获取商品与奖池信息，不打开商品页面，不重复编写采集脚本。所有任务产物写入素材目录的 `edit`；纯数字 ID 必须指定 `--kind magic` 或 `--kind ichiban`。
+
+```text
+python "<skill_root>/helpers/lottery_goods.py" "<赏商品链接>" --edit-dir "<edit>"
+python "<skill_root>/helpers/lottery_cards.py" "<edit>/lottery/<itemsId>/goods.json" --prize-id "<奖品ID>" --template default --duration <最终口播对齐镜头秒数> -o "<edit>/clips_visual/prize-01.mp4"
+```
+
+采集脚本保存标准化清单、原始响应、原图及图质报告，并处理活动奖、Last 赏条件和售罄档位；信息不完整时阻止制作。渲染脚本自动准备前端工程，可靠参考价上卡，缺价隐藏；单抽价不作奖品价值。完整流程见 [lottery.md](references/lottery.md)。
+
+文案围绕重点奖、其他档位及详情引导自然展开；魔力赏可介绍已核实的升级玩法，一番赏按实际档位及 Last 条件介绍。具体见[赏文案](references/lottery.md#文案)。
+
+不指定模板时使用 `default`。`--list-templates` 查看模板，`--template <模板ID>` 切换，`--preview-only` 审阅 PNG，同档合并可重复 `--prize-id`，最多 4 件。新增模板只需独立目录、配置和组件，开发时参阅 [模板扩展](references/lottery-templates.md)。
+
+`--template anime-fantasy` 使用简约樱花与猫猫头背景，中央留白突出商品；背景和文字固定，商品轻微运动。模板支持 PNG/JPEG/WebP 位图。
 
 数码电子等功能型商品允许以经核实的技术参数为叙事中心，口播、字幕、标题和简介可使用这些参数；普通商品仍保留原有属性限制。具体要求见 [商品类型参考](references/product.md#数码及功能型商品)。
 

@@ -6,6 +6,12 @@ import argparse
 import json
 import subprocess
 from pathlib import Path
+import uuid
+
+try:
+    from .verify_tts_subtitles import assert_single_line_cues
+except ImportError:
+    from verify_tts_subtitles import assert_single_line_cues
 
 
 # Design tokens are 1080p pixels. Helpers scale them to the file being burned.
@@ -66,23 +72,33 @@ def probe_video_size(video: Path) -> tuple[int, int, int, int]:
 
 
 # Builds libass force_style in the video's own pixel canvas.
-# Input: display width/height and ASS primary colour. Returns: force_style string.
+# Input: display width/height, ASS primary colour and explicit style profile. Returns: force_style string.
 def ad_force_style(
     play_res_x: int,
     play_res_y: int,
     primary_colour: str = AD_DEFAULT_PRIMARY,
+    profile: str = "product",
 ) -> str:
     colour = primary_colour.strip()
     if not colour.startswith("&H"):
         raise ValueError("primary colour must be an ASS &HAABBGGRR value")
     if play_res_x < 2 or play_res_y < 2:
         raise ValueError("video resolution is too small for subtitle burn-in")
-    factor = play_res_y / AD_DESIGN_HEIGHT
+    if profile not in {"product", "lottery-portrait"}:
+        raise ValueError("unknown subtitle profile")
+    if profile == "lottery-portrait":
+        if play_res_x * 16 != play_res_y * 9:
+            raise ValueError("lottery-portrait captions require a 9:16 canvas")
+        factor = play_res_x / 1080
+        font_size, margin_x, margin_v = 64, 72, 180
+    else:
+        factor = play_res_y / AD_DESIGN_HEIGHT
+        font_size, margin_x, margin_v = AD_FONT_SIZE, AD_MARGIN_X, AD_MARGIN_V
     return (
         f"PlayResX={play_res_x},"
         f"PlayResY={play_res_y},"
         f"FontName={AD_FONT_NAME},"
-        f"FontSize={_scale(AD_FONT_SIZE, factor, 1)},"
+        f"FontSize={_scale(font_size, factor, 1)},"
         f"Bold={AD_BOLD},"
         f"Spacing={_scale(AD_SPACING, factor)},"
         f"PrimaryColour={colour},"
@@ -92,20 +108,21 @@ def ad_force_style(
         f"Outline={_scale(AD_OUTLINE, factor, 1)},"
         f"Shadow={AD_SHADOW},"
         f"Alignment=2,"
-        f"MarginL={_scale(AD_MARGIN_X, factor)},"
-        f"MarginR={_scale(AD_MARGIN_X, factor)},"
-        f"MarginV={_scale(AD_MARGIN_V, factor)},"
+        f"MarginL={_scale(margin_x, factor)},"
+        f"MarginR={_scale(margin_x, factor)},"
+        f"MarginV={_scale(margin_v, factor)},"
         f"WrapStyle={AD_WRAP_STYLE}"
     )
 
 
 # Burns captions onto mixed video with PlayResX/Y matching that file.
-# Input: mixed video, SRT, output path, optional ASS colour. Returns: None after writing MP4.
+# Input: mixed video, SRT, output path, ASS colour and explicit profile. Returns: None after writing MP4.
 def burn_ad_subtitles(
     video: Path,
     srt: Path,
     output: Path,
     primary_colour: str = AD_DEFAULT_PRIMARY,
+    profile: str = "product",
 ) -> None:
     if not video.exists():
         raise FileNotFoundError(video)
@@ -113,7 +130,10 @@ def burn_ad_subtitles(
         raise FileNotFoundError(srt)
     output.parent.mkdir(parents=True, exist_ok=True)
     width, height, display_width, display_height = probe_video_size(video)
-    style = ad_force_style(display_width, display_height, primary_colour).replace("'", r"\'")
+    style = ad_force_style(display_width, display_height, primary_colour, profile).replace("'", r"\'")
+    if profile == "lottery-portrait":
+        assert_single_line_cues(srt.read_text(encoding="utf-8"), 16)
+    temporary = output.with_name(f".{output.stem}-{uuid.uuid4().hex}.partial.mp4")
     subs = str(srt.resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
     vf = (
         "setsar=1,"
@@ -140,14 +160,22 @@ def burn_ad_subtitles(
         "copy",
         "-movflags",
         "+faststart",
-        str(output),
+        str(temporary),
     ]
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
-    if result.returncode != 0:
-        raise RuntimeError(f"subtitle burn-in failed: {result.stderr[-1200:]}")
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(f"subtitle burn-in failed: {result.stderr[-1200:]}")
+        if probe_video_size(temporary)[2:] != (display_width, display_height):
+            raise RuntimeError("subtitle burn-in changed the display resolution")
+        subprocess.run(["ffmpeg", "-v", "error", "-xerror", "-i", str(temporary), "-f", "null", "-"],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
     print(
         f"subtitle canvas {display_width}x{display_height} "
-        f"(coded {width}x{height}) force_style={ad_force_style(display_width, display_height, primary_colour)}"
+        f"(coded {width}x{height}) force_style={ad_force_style(display_width, display_height, primary_colour, profile)}"
     )
 
 
@@ -159,12 +187,16 @@ def main() -> None:
     parser.add_argument("srt", type=Path, help="Verified master.srt")
     parser.add_argument("-o", "--output", type=Path, required=True, help="Final MP4 path")
     parser.add_argument(
+        "--profile", choices=["product", "lottery-portrait"], default="product",
+        help="Explicit portrait lottery style: 64px font, 72px side and 180px bottom margins at 1080×1920",
+    )
+    parser.add_argument(
         "--primary-colour",
         default=AD_DEFAULT_PRIMARY,
         help="ASS PrimaryColour, default white &H00FFFFFF",
     )
     args = parser.parse_args()
-    burn_ad_subtitles(args.video, args.srt, args.output, args.primary_colour)
+    burn_ad_subtitles(args.video, args.srt, args.output, args.primary_colour, args.profile)
     print(f"burned subtitles → {args.output}")
 
 

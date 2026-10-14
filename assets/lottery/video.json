@@ -1,0 +1,13 @@
+{
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "image_box": [
+    880,
+    900
+  ],
+  "ichiban_image_max_width": 800,
+  "subtitle_safe_top": 1620,
+  "motion_pixels": 0,
+  "horizontal_margin": 72
+}
