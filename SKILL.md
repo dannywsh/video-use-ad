@@ -8,7 +8,8 @@ description: >
   Fish Audio clone, single-line Chinese captions, LUFS mix, one title and 16:9 plus 4:3 covers.
   Product copy checks current itemId promotions and places verified offers before a comment goods link.
   Runtime comes from the user prompt, not a skill default.
-  Triggers: 剪辑, 宣传广告视频, 商品宣传, ACG 宣传, 产品宣传片, 漫展宣传, event video titles.
+  Includes 1080x1920 Magic/Ichiban prize videos with Remotion-designed animated rarity stages and verified reference prices.
+  Triggers: 剪辑, 宣传广告视频, 商品宣传, ACG 宣传, 产品宣传片, 漫展宣传, 魔力赏视频, 一番赏视频, event video titles.
   Production-correctness rules are hard; general edits otherwise have artistic freedom.
 ---
 
@@ -32,6 +33,8 @@ Pick one at session start. Do not blend the two recipes.
 - **Bilibili product promo.** Triggers: 宣传广告视频, 广告视频, 云逛视频, ACG 宣传, 商品宣传视频, 产品宣传片, 漫展宣传, or a Bilibili product/event video from stills + cloned voice. Then [Bilibili product promo](#bilibili-product-promo-hard-recipe) is a **hard recipe** — for product tasks, the narrative centers on the product/character itself, its visual traits, setting, atmosphere, and audience appeal; event tasks follow the applicable event details below. Do not turn ordinary goods into a specification list; technical parameters may be central only for digital/electronic or other function-led products, and price is omitted from outward copy by default. Runtime is whatever the user wrote in the prompt; do not assume a length. Hard Rules still apply. Do not substitute general subtitle/mix taste examples for the locked promo path.
 
 广告任务开始时，除本文外仅读取适用的一份题材细节：普通商品／手办及数码等功能型商品用 [product.md](references/product.md)；漫展、游戏展、展览、音乐会用 [convention.md](references/convention.md)；一番赏／魔力赏商品用 [lottery.md](references/lottery.md)。漫展的段落顺序、活动标题切入点和选材复用审核以活动参考为准；普通商品附带抽奖促销不因此改为一番赏／魔力赏题材。
+
+一番赏／魔力赏按 [赏视频流程](references/lottery.md) 调用采集和模板 helper，不查看商品页面或重写请求脚本。该分支使用竖屏商品卡，覆盖共用画布、背景、静图运动、价格及字幕配置。
 
 结合用户目标、商品详情和实际素材分类，不能仅凭 `mall` / `ticket` 判断；若仍不明确且会影响制作，先确认。广告时长只从用户提示词读取，缺失时追问；数码等功能型商品允许经核实的技术参数成为叙事中心。
 
@@ -125,6 +128,8 @@ $env:TEMP = "<edit>/tmp"
 
 ## Setup
 
+本文 `python` 表示已安装技能依赖的解释器。复用用户现有 Python／虚拟环境，不要求安装 uv；环境使用 `python3`、`py` 或解释器绝对路径时替换命令前缀即可。带引号的解释器路径在 PowerShell 中用 `&` 调用。赏类示例使用单行命令；其他示例中的 `\` 为 Bash 续行符，Windows 执行时合为单行。
+
 First-time install lives in [install.md](install.md) (clone, deps, ffmpeg, skill registration, API keys). Don't re-run it every session; on cold start just verify:
 
 - **Credential discovery (mandatory before asking the user):** keys live outside the skill install directory because `npx skills update` deletes and recreates it. Canonical file: `~/.config/video-use/.env` on all platforms (Windows: `%USERPROFILE%\.config\video-use\.env`; or `$XDG_CONFIG_HOME/video-use/.env`, or `$VIDEO_USE_ENV`). Print the local path with `python "<skill_root>/helpers/env_file.py" --user-path`. Lookup order matches `<skill_root>/helpers/env_file.py`: user config → leftover `<skill_root>/.env` (copied to user config on first helper run) → `<cwd>/.env` → exported environment variables. Do **not** infer the key file from the current workspace, source-video directory, or a hard-coded example path. If a leftover skill-root `.env` exists, run `python "<skill_root>/helpers/env_file.py" --migrate` before updating.
@@ -134,7 +139,7 @@ First-time install lives in [install.md](install.md) (clone, deps, ffmpeg, skill
 - `FISH_API_KEY` resolves using the same lookup — required for the default Fish Audio TTS / voice cloning. Ask the user only after the discovery check fails.
 - `MIMO_API_KEY` resolves using the same lookup — required only when the user explicitly asks for MiMo TTS. If MiMo is not used, leave it unset.
 - `ffmpeg` + `ffprobe` on PATH.
-- Python deps installed (`uv sync` or `pip install -e .` inside the repo).
+- Python deps installed in the selected interpreter (`python -m pip install -e "<skill_root>"`; `uv sync` is optional).
 - Node.js + npm available if the session needs HyperFrames, Remotion, or the `ark-seedream` cover backend. HyperFrames currently requires Node.js 22+; Seedream needs Node 18+.
 - `yt-dlp`, HyperFrames, Remotion, Manim installed only on first use.
 - First-use animation setup happens inside the slot directory, never at the video-use repo root. HyperFrames can be invoked with `npx --yes hyperframes ...`; Remotion can be scaffolded with `npx create-video@latest` or installed as a project-local dependency before using its `remotion render` command.
@@ -545,6 +550,7 @@ The rules here are production standards, not taste. For ordinary goods, product/
 - **促销信息来自实时商品数据**：默认从 `product_info.json` 的 `detail.promotions` 选取已核实、且适用于目标 SKU 的优惠。对外文案不主动写活动开始日期或时间；若活动未开始，不得说成优惠已经生效，可讲已核实的活动亮点，提醒观众先加入购物车、届时符合活动条件再享受优惠，并引导查看链接。优惠券不等同于直接降价或保证到手价，不把资格不明的优惠说成人人可享。
 - **文案面向观众**：口播、简介和挂载文案用自然、顺口的表达，避免说明书式罗列、字段堆叠和客服腔。介绍商品或角色，再挑一个已核实的优惠重点，引导观众点击链接；不写“商品页标注”“具体规则以商品页为准”等生硬转述。
 - **普通售价默认不出现在对外文本**：除非用户明确要求，商品标价不得写入口播、烧录字幕、标题、投稿简介、商品封面新增文字或标签；官方漫展海报封面允许保留原有票价。用户要求纳入促销时，可写促销券面金额与门槛，但不可据此计算或承诺最终到手价。不要用“低价”“划算”等话术制造购买承诺。
+- **赏类参与引导**：分别按[魔力赏口播结构](references/lottery.md#魔力赏口播结构)或[一番赏口播结构](references/lottery.md#一番赏口播结构)组织介绍，可在口播说明接口核实的单抽价和随机获得机会；奖品参考价默认仍只在商品卡上。魔力升级仅用于有明确接口规则的魔力赏；一番赏按实际档位及 Last 赏条件介绍。
 - **结尾引导了解详情**：视频文案或商品简介可自然引导观众点击评论区链接；商品挂载卡片的链接前文案应称“商品链接”或直接说“点链接”，不要说“评论区”。不要在视频里替观众把所有优惠规则讲完。
 - **写作自测**：若删掉数字和商品属性后，普通商品的文案反而更像角色/商品介绍，就删掉这些数字和属性；文案应围绕角色/商品与已核实活动展开。
 
@@ -552,9 +558,11 @@ The rules here are production standards, not taste. For ordinary goods, product/
 
 每次任务开始先收集以下参数，缺失时追问，不猜测：
 
+赏商品图可由 [赏奖池采集 helper](references/lottery.md#接口采集) 自动取得，无须用户另交素材文件夹；仍先确定 `<videos_dir>` / `<edit>`，时长、参考声音和 BGM 按本表收集。
+
 | 参数 | 占位 | 说明 |
 |------|------|------|
-| 商品 ID/链接 | `<商品 ID 或 URL>` | 先交给 `biliup goods search`，不凭商品名猜测商品 |
+| 商品 ID/链接 | `<商品 ID 或 URL>` | 普通商品调用 `biliup_goods.py`；赏商品调用 `lottery_goods.py`，不凭名称猜测 |
 | 成片时长 | `<时长>` | 只从用户提示词读取；缺失时追问，不默认任何时长 |
 | 素材文件夹 | `<文件夹路径>` | 商品图片、效果图所在目录 |
 | 参考声音 | `<.mp3>` | Fish Audio 声音克隆参考音频（建议 ≥10 秒、干净单人声） |
@@ -562,6 +570,8 @@ The rules here are production standards, not taste. For ordinary goods, product/
 | TTS 风格提示词 | `<用户提示词>` | 可选；Fish Audio 默认不使用。仅当用户明确要求语速/音量等，才写入 `--extra_params` |
 
 ### 执行流程
+
+**一番赏／魔力赏分支**：步骤 1–2 直接运行 `lottery_goods.py`，读取奖池清单、接口原图及图质报告，不查看商品页面；促销和挂载信息由 `biliup_goods.py` 补充。步骤 5 按奖级选品，步骤 6 审阅竖屏模板，步骤 8 用 `lottery_cards.py` 渲染，步骤 11 使用 `--profile lottery-portrait` 和 16 字单行上限。接口不完整时补齐 helper 后重新采集，详细命令及验收见 [lottery.md](references/lottery.md)。其余口播、混音、封面与投稿流程继续适用。
 
 1. **先采集商品事实和促销**：必须使用 `biliup goods search`，不要先凭商品名或图片文件名写文案。推荐运行：`python "<skill_root>/helpers/biliup_goods.py" <商品 ID 或 URL> --cookie <cookies.json> --output <edit>/product_info.json`。该 helper 只负责调用 biliup 并保存 JSON，不复制商品接口逻辑；需要指定 Release 二进制时加 `--biliup-bin <绝对路径>`。核对返回的 `itemId`、`goodsName`、`detail.kind`、`detail` 和 `detail.promotions`。会员购逐项查看活动有效期、券门槛/资格、活动说明、赠品和 SKU 对应的价格/库存/活动标签；票务按接口实际返回字段处理。只写已核实且适用于目标 SKU 的优惠；区分已生效与未开始的活动，未开始时按下文促销状态规则处理，标价/票价默认仅作后台核验。普通商品的材质等属性不得作为文案卖点；数码及功能型商品按对应类型规则使用经核实的技术参数。商品事实以 JSON 为准，无法从中得到的卖点不得写入文案；事实字段不是必须逐项播报的清单。
 2. **清点素材（静图分拣在文案之前）**：`ffprobe` 检查视频素材。静图必须按 [静图分拣](#静图分拣硬性) 跑 `inventory_stills.py`、看每张原图和长图 y 刻度总览，先识别实际栏目与主体，再判断可上镜的局部并裁窗复核，写入 `<edit>/stills_inventory.md`。将 `product_info.json` 的图片/属性与本地素材逐项对照；按栏目记录上镜 / 只取信息 / 弃用，再写口播。同一张图允许不同栏目有不同判定，不能只因整图字多就排除其中的实物、人物或活动画面。活动另做 [素材与主视觉复用审核](references/convention.md#活动选材与主视觉复用审核)。
@@ -610,7 +620,7 @@ The rules here are production standards, not taste. For ordinary goods, product/
 
 **题材约束（在通用流程上收紧，不另走一套切法）**
 
-题材约束使用开始时已选的 [普通商品素材](references/product.md#普通商品详情)、[漫展素材](references/convention.md#漫展展览活动长图) 或 [一番赏／魔力赏素材](references/lottery.md#叙事与素材)。通用切窗方法不变，不重复读取其它题材。
+题材约束使用开始时已选的 [普通商品素材](references/product.md#普通商品详情)、[漫展素材](references/convention.md#漫展展览活动长图) 或 [一番赏／魔力赏素材](references/lottery.md#模板与渲染)。普通商品与活动仍按通用切窗，赏商品优先使用接口原图制作竖屏商品卡，不重复读取其它题材。
 
 ### 图片素材规范
 
@@ -664,6 +674,8 @@ The rules here are production standards, not taste. For ordinary goods, product/
 - 画布：**1920×1080**。
 - 背景：**高斯模糊填充**——原图放大铺满并高斯模糊作为背景层，前景叠放适配后的清晰画面。
 
+一番赏／魔力赏用 [模板 helper](references/lottery.md#模板与渲染) 渲染 **1080×1920、30fps** 商品卡，默认 `default`，通过 `--template` 选择其他模板。先看生成的预览图核对商品与文字，价格缺失时隐藏；不使用横屏模糊填充。
+
 ### 混音规范（人声为主，数值硬性）
 
 | 轨 | 响度目标 | 说明 |
@@ -681,6 +693,8 @@ The rules here are production standards, not taste. For ordinary goods, product/
 ### 字幕规范（中文单行字幕）
 
 样式锁在 `<skill_root>/helpers/ad_subtitles.py`，禁止手写或改写 `force_style`。该 helper 会 `ffprobe` 成片宽高，把 `PlayResX/PlayResY` 设成**当前视频的显示分辨率**，再按 `height/1080` 缩放字号、字距、描边和边距。只写 `PlayResY=1080` 会让 libass 用 4:3 的 `PlayResX=1440`，在 1920×1080 上把字横向拉宽，禁止那样烧录。
+
+赏视频使用 `--profile lottery-portrait`，生成和验证参数见[赏字幕](references/lottery.md#制作与字幕)，覆盖下文共用字幕数值；逐字对齐和最后烧录规则不变。
 
 - **生成脚本（硬性）**：
 
