@@ -38,7 +38,6 @@ Read install.md first to install this repo, wire up ffmpeg, register the skill w
 - **ElevenLabs API Key**（Scribe 默认 ASR / ElevenLabs TTS 时必需）— 词级转写、说话人分离，在 [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys) 获取
 - **Paraformer Token**（中文 ASR 可选）— 托管 FunASR Paraformer-large，适合中文口播字幕时间戳；写入 `PARAFORMER_API_TOKEN`，默认地址 ``
 - **Fish Audio API Key**（默认 TTS / 声音克隆）— 在 [Fish Audio](https://fish.audio) 获取
-- **GCP Gemini / Ark Seedream**（B 站封面可选）— `GCP_GEMINI_IMAGE_API_KEY`、`ARK_SEEDREAM_API_KEY`，见 `.env.example`
 - **MiMo API Key**（可选）— 仅当明确要求 MiMo 配音时需要，在 [mimo.mi.com](https://mimo.mi.com) 获取
 
 然后进入素材文件夹启动助手：
@@ -56,7 +55,7 @@ claude    # 或 codex、hermes 等
 
 ## 安装 skill（用户）
 
-装的是本仓（`dannywsh/video-use-ad`），不要装上游 `browser-use/video-use`。目录见 [dannywsh/skills](https://github.com/dannywsh/skills)。嵌套的 `skills/bili-cover/` 随本仓一起安装，不必再装独立 Seedream skill。
+装的是本仓（`dannywsh/video-use-ad`），不要装上游 `browser-use/video-use`。目录见 [dannywsh/skills](https://github.com/dannywsh/skills)。嵌套的 `skills/bili-cover/` 随本仓一起安装。
 
 ```bash
 npx skills add dannywsh/video-use-ad -g -y
@@ -95,7 +94,7 @@ brew install yt-dlp             # 可选，用于下载在线素材
 
 mkdir -p ~/.config/video-use
 cp .env.example ~/.config/video-use/.env   # 填 FISH_API_KEY，以及 ELEVENLABS_API_KEY 或 PARAFORMER_API_TOKEN
-# 封面可选：GCP_GEMINI_IMAGE_API_KEY、ARK_SEEDREAM_API_KEY；MIMO_API_KEY 仅在使用 MiMo 时需要
+# MIMO_API_KEY 仅在使用 MiMo 时需要
 chmod 600 ~/.config/video-use/.env         # Windows 可省略 chmod
 # Windows PowerShell:
 # New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\video-use" | Out-Null
@@ -217,7 +216,7 @@ MiMo API 为 OpenAI 兼容格式，base URL `https://api.xiaomimimo.com/v1`，�
 素材在 <文件夹路径> 文件夹中。参考声音用 <.mp3>，BGM 风格：<风格>。
 ```
 
-从 [`SKILL.md`](SKILL.md) 选择模式，通用流程一次读取后在本会话复用。广告任务执行主文件中的 [共用制作流程](SKILL.md#bilibili-product-promo-hard-recipe)，再仅读取适用的 [商品要求](references/product.md)、[活动要求](references/convention.md) 或 [一番赏／魔力赏要求](references/lottery.md)，不逐阶段搜索通用参考文件。封面由 [bili-cover](skills/bili-cover/SKILL.md) 按对应模式处理：商品生成一张 16:9，查看构图后选择连续 `crop_center_x` 裁出 4:3；漫展直接使用官方宣传图，保留其原有文字、Logo、英文及票价，不调用生图。封面后端与 Manim 子技能仍保留实际使用的专业说明。
+从 [`SKILL.md`](SKILL.md) 选择模式，通用流程一次读取后在本会话复用。广告任务执行主文件中的 [共用制作流程](SKILL.md#bilibili-product-promo-hard-recipe)，再仅读取适用的 [商品要求](references/product.md)、[活动要求](references/convention.md) 或 [一番赏／魔力赏要求](references/lottery.md)，不逐阶段搜索通用参考文件。封面由 [bili-cover](skills/bili-cover/SKILL.md) 按对应模式处理：商品生成一张 16:9，查看构图后选择连续 `crop_center_x` 裁出 4:3；漫展直接使用官方宣传图，保留其原有文字、Logo、英文及票价，不调用生图。封面与 Manim 子技能仍保留实际使用的专业说明。
 
 ### 魔力赏／一番赏工具
 

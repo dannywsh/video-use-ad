@@ -4,7 +4,7 @@
 
 ## Preparation
 
-For exhibitions, events and other 漫展 material, do **not** call an image-generation backend. Use the supplied official promotional poster as `<edit>/cover.jpg`; only perform deterministic resize/crop if its source dimensions require a 16:9 delivery file. Preserve the poster's original artwork and text. Never stretch the artwork.
+For exhibitions, events and other 漫展 material, do **not** call image generation. Use the supplied official promotional poster as `<edit>/cover.jpg`; only perform deterministic resize/crop if its source dimensions require a 16:9 delivery file. Preserve the poster's original artwork and text. Never stretch the artwork.
 
 官方海报原有的文字、Logo、英文、票价及制作禁词保留。商品生图的艺术字、4–8 字标题、总字数上限、“无 Logo／英文／禁词”等要求不适用于官方原图；不新画艺术字，不重绘，不伪造生图提示词。
 

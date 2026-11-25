@@ -1,6 +1,6 @@
 # Product cover
 
-仅 `product` 模式读取。商品图生成为一张 16:9，连续裁切和后端选择见 [封面主入口](../SKILL.md)。
+仅 `product` 模式读取。商品图生成为一张 16:9，连续裁切见 [封面主入口](../SKILL.md)。
 
 ## Composition and type
 
@@ -43,7 +43,7 @@
 - Head or face is cut by the canvas edge, or completely hidden
 - 4:3 crop loses the product itself, or has no readable artistic title (missing, or clearly a different phrase than the confirmed copy)
 
-**Retry policy.** At most 3 redos total. On a hit, switch to the next image backend and keep the same product reference photo. No hit → pass. Still failing after the limit → stop the cover flow and explain why.
+**Retry policy.** At most 3 redos total using the active generation method (built-in image generation tool by default, or the user-specified method if no built-in tool is available), keeping the same product reference photo. No hit → pass. If no image can be generated (missing built-in tool and no user-specified method, tool/API error, refusal, or still failing after the retry limit) → immediately stop the cover flow and report the exact failure reason to the user.
 
 ## Prompt template
 

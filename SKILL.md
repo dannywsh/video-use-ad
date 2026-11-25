@@ -133,20 +133,18 @@ $env:TEMP = "<edit>/tmp"
 First-time install lives in [install.md](install.md) (clone, deps, ffmpeg, skill registration, API keys). Don't re-run it every session; on cold start just verify:
 
 - **Credential discovery (mandatory before asking the user):** keys live outside the skill install directory because `npx skills update` deletes and recreates it. Canonical file: `~/.config/video-use/.env` on all platforms (Windows: `%USERPROFILE%\.config\video-use\.env`; or `$XDG_CONFIG_HOME/video-use/.env`, or `$VIDEO_USE_ENV`). Print the local path with `python "<skill_root>/helpers/env_file.py" --user-path`. Lookup order matches `<skill_root>/helpers/env_file.py`: user config → leftover `<skill_root>/.env` (copied to user config on first helper run) → `<cwd>/.env` → exported environment variables. Do **not** infer the key file from the current workspace, source-video directory, or a hard-coded example path. If a leftover skill-root `.env` exists, run `python "<skill_root>/helpers/env_file.py" --migrate` before updating.
-- Run the check for the relevant key names (`ELEVENLABS_API_KEY`, `MIMO_API_KEY`, `FISH_API_KEY`, `PARAFORMER_API_TOKEN`, `GCP_GEMINI_IMAGE_API_KEY`, `ARK_SEEDREAM_API_KEY`) with the helpers' parsing semantics: strip whitespace around the key name and value, accept quoted values, and treat an empty value as missing. Do not use a strict `^KEY=` regex, because a valid `.env` may contain spaces around `=`. Never print a key or its prefix in tool output.
+- Run the check for the relevant key names (`ELEVENLABS_API_KEY`, `MIMO_API_KEY`, `FISH_API_KEY`, `PARAFORMER_API_TOKEN`) with the helpers' parsing semantics: strip whitespace around the key name and value, accept quoted values, and treat an empty value as missing. Do not use a strict `^KEY=` regex, because a valid `.env` may contain spaces around `=`. Never print a key or its prefix in tool output.
 - `ELEVENLABS_API_KEY` resolves from that lookup — required for Scribe transcription (the default ASR) and ElevenLabs TTS. Ask the user only after the mandatory discovery check fails, then write a supplied key to the user-config `.env` from `--user-path` (never to the skill install directory, never to the user's `<videos_dir>`).
 - `PARAFORMER_API_TOKEN` resolves using the same lookup — required only for `--provider paraformer`. Optional `PARAFORMER_API_URL` overrides the default ``. Ask the user only after the discovery check fails.
 - `FISH_API_KEY` resolves using the same lookup — required for the default Fish Audio TTS / voice cloning. Ask the user only after the discovery check fails.
 - `MIMO_API_KEY` resolves using the same lookup — required only when the user explicitly asks for MiMo TTS. If MiMo is not used, leave it unset.
 - `ffmpeg` + `ffprobe` on PATH.
 - Python deps installed in the selected interpreter (`python -m pip install -e "<skill_root>"`; `uv sync` is optional).
-- Node.js + npm available if the session needs HyperFrames, Remotion, or the `ark-seedream` cover backend. HyperFrames currently requires Node.js 22+; Seedream needs Node 18+.
+- Node.js + npm available if the session needs HyperFrames or Remotion. HyperFrames currently requires Node.js 22+.
 - `yt-dlp`, HyperFrames, Remotion, Manim installed only on first use.
 - First-use animation setup happens inside the slot directory, never at the video-use repo root. HyperFrames can be invoked with `npx --yes hyperframes ...`; Remotion can be scaffolded with `npx create-video@latest` or installed as a project-local dependency before using its `remotion render` command.
 - This skill vendors `skills/manim-video/`. Read [Manim 子 skill](skills/manim-video/SKILL.md) when building a Manim slot.
 - This skill vendors `skills/bili-cover/`. When delivering a Bilibili cover, read [封面子 skill](skills/bili-cover/SKILL.md) (do not improvise the cover recipe here).
-- `GCP_GEMINI_IMAGE_API_KEY` resolves from that lookup — required for the `gcp-gemini` cover backend. Optional `GCP_GEMINI_IMAGE_MODEL` / `GCP_GEMINI_IMAGE_API_ENDPOINT` / `GCP_GEMINI_IMAGE_SIZE` override model, host, and `imageSize`.
-- `ARK_SEEDREAM_API_KEY` resolves from that lookup — required for the `ark-seedream` cover backend. Optional `ARK_SEEDREAM_MODEL` / `ARK_SEEDREAM_API_BASE_URL` override model and Ark base URL.
 - Bilibili product promo is part of this skill (not a nested skill). When that mode is active, follow [广告共用制作流程](#bilibili-product-promo-hard-recipe). Cover stills follow `skills/bili-cover/`.
 
 Helpers (`<skill_root>/helpers/transcribe.py`, `<skill_root>/helpers/render.py`, etc.) live under the main skill root alongside its SKILL.md. Resolve their paths from `<skill_root>`, not from the current working directory — the skill is typically symlinked at `~/.claude/skills/video-use/` or `~/.codex/skills/video-use/`.
@@ -772,7 +770,7 @@ The rules here are production standards, not taste. For ordinary goods, product/
 
 ### B站封面交付规范
 
-最终交付必须包含 `<edit>/cover.jpg`（16:9）和 `<edit>/cover-4x3.jpg`（从同一张 16:9 裁出），不得单独生成第二张 4:3。商品任务传递 `product` 模式，官方漫展海报传递 `poster` 模式；封面构图、提示词、保真度、裁切与验收规则仅在 [封面子 skill](skills/bili-cover/SKILL.md) 维护。商品模式交付实际使用的提示词，官方海报模式注明“使用官方宣传图，未调用生图”。投稿参数仍为 biliup `--cover` + `--cover43`。
+最终交付必须包含 `<edit>/cover.jpg`（16:9）和 `<edit>/cover-4x3.jpg`（从同一张 16:9 裁出），不得单独生成第二张 4:3。商品任务传递 `product` 模式（默认调用当前环境内置生图工具；若无内置生图工具则使用用户指定的方式生图；无法生成图片时立即停止流程并告知用户具体原因），官方漫展海报传递 `poster` 模式；封面构图、提示词、保真度、裁切与验收规则仅在 [封面子 skill](skills/bili-cover/SKILL.md) 维护。商品模式交付实际使用的提示词，官方海报模式注明“使用官方宣传图，未调用生图”。投稿参数仍为 biliup `--cover` + `--cover43`。
 
 ### 示例
 

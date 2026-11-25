@@ -15,7 +15,7 @@ Three things must exist on this machine:
 
 1. This skill installed from **`dannywsh/video-use-ad`** (not upstream `browser-use/video-use`). The root `references/` and nested `skills/bili-cover/` with its references ship with it; preserve these directories together with `helpers/`.
 2. `ffmpeg` on `$PATH` (plus optional `yt-dlp` for online sources).
-3. Credentials in the user-config `.env` (not the skill install folder): `~/.config/video-use/.env` on all platforms (Windows: `%USERPROFILE%\.config\video-use\.env`). `ELEVENLABS_API_KEY` for Scribe (default ASR), and/or `PARAFORMER_API_TOKEN` for Chinese Paraformer ASR. For default TTS add `FISH_API_KEY`. Cover backends optionally need `GCP_GEMINI_IMAGE_API_KEY` and `ARK_SEEDREAM_API_KEY`. MiMo is optional and only if the user asks for it.
+3. Credentials in the user-config `.env` (not the skill install folder): `~/.config/video-use/.env` on all platforms (Windows: `%USERPROFILE%\.config\video-use\.env`). `ELEVENLABS_API_KEY` for Scribe (default ASR), and/or `PARAFORMER_API_TOKEN` for Chinese Paraformer ASR. For default TTS add `FISH_API_KEY`. MiMo is optional and only if the user asks for it.
 
 And one thing must be true about the current agent:
 
@@ -105,7 +105,7 @@ If you can't tell which agent you're in, ask once.
 
 Resolve `USER_ENV` with `python "$SKILL_ROOT/helpers/env_file.py" --user-path`; it is normally `~/.config/video-use/.env` (Windows `%USERPROFILE%\.config\video-use\.env`), with `VIDEO_USE_ENV` / `XDG_CONFIG_HOME` overrides. Create the parent directory if needed. Write supplied keys there, never into the skill directory or footage directory. Never print a key, its prefix or the contents of `.env`; never commit `.env` or clobber unrelated entries.
 
-Transcription uses ElevenLabs Scribe by default, or Paraformer for Chinese ASR. Default TTS is Fish Audio. Product image backends optionally need Gemini or Seedream credentials; official poster mode does not. MiMo is opt-in only.
+Transcription uses ElevenLabs Scribe by default, or Paraformer for Chinese ASR. Default TTS is Fish Audio. MiMo is opt-in only.
 
 #### Credential discovery before asking the user
 
@@ -174,10 +174,6 @@ curl -s -o /dev/null -w '%{http_code}\n' $PARAFORMER_API_URL/health
 
 Check `FISH_API_KEY` with the same parser and update the corresponding entry only if missing. Default Fish Audio voice clones stay private.
 
-#### Cover backends (optional until a product cover is required)
-
-Check `GCP_GEMINI_IMAGE_API_KEY` / `ARK_SEEDREAM_API_KEY` only for a selected product image backend. Ask only after the same lookup finds no non-empty value, and update the relevant entry. Official poster mode needs neither image key. Model / endpoint overrides remain in `.env.example`.
-
 #### MiMo (opt-in only)
 
 Check and ask for `MIMO_API_KEY` only if the user explicitly wants MiMo; use the same parser and persistence rules.
@@ -200,7 +196,7 @@ Tell the user, in one short message:
 - Skill root (`$SKILL_ROOT`, usually `~/.agents/skills/video-use`).
 - `cd` into the footage folder and start the agent there.
 - A good first message: *"edit these into a launch video"* or *"inventory these takes and propose a strategy."*
-- Daily work starts at [SKILL.md](SKILL.md): ordinary editing, shared promo production, tools, TTS, animations, EDL, subtitles and publishing checks are included in the main file. Read the applicable mode and common sections once, then reuse them throughout the session. Promos additionally read only the applicable [product](references/product.md), [event](references/convention.md) or [lottery](references/lottery.md) reference; no separate common-reference search is needed at each stage. Convention, concert and game-expo titles follow the [event title instructions](references/convention.md#活动视频标题): filter fact-supported angles, then let the model choose one suitable angle directly without a random-selection script, and deliver one title. Cover and Manim subskills retain their specialized instructions and backend references, used only for those operations. Outputs and generated editing projects land in `<videos_dir>/edit/`. Before production, create `<videos_dir>/edit/tmp/` and set `TMPDIR`, `TMP`, `TEMP` to that absolute path for every execution session and animation agent. This includes animation source projects, configs, local dependencies, caches, downloaded media, previews, and final files; keep the footage folder root and the skill repository free of session-generated files.
+- Daily work starts at [SKILL.md](SKILL.md): ordinary editing, shared promo production, tools, TTS, animations, EDL, subtitles and publishing checks are included in the main file. Read the applicable mode and common sections once, then reuse them throughout the session. Promos additionally read only the applicable [product](references/product.md), [event](references/convention.md) or [lottery](references/lottery.md) reference; no separate common-reference search is needed at each stage. Convention, concert and game-expo titles follow the [event title instructions](references/convention.md#活动视频标题): filter fact-supported angles, then let the model choose one suitable angle directly without a random-selection script, and deliver one title. Cover and Manim subskills retain their specialized instructions, used only for those operations. Outputs and generated editing projects land in `<videos_dir>/edit/`. Before production, create `<videos_dir>/edit/tmp/` and set `TMPDIR`, `TMP`, `TEMP` to that absolute path for every execution session and animation agent. This includes animation source projects, configs, local dependencies, caches, downloaded media, previews, and final files; keep the footage folder root and the skill repository free of session-generated files.
 
 ## Keeping the skill current
 
@@ -220,7 +216,7 @@ If `pyproject.toml` changed deps, re-run `python -m pip install -e "<skill_root>
 - Symlink the **whole directory**, not just `SKILL.md`.
 - If the user-config `.env` exists but the key is empty, treat it as missing.
 - `ffmpeg` ≥ 4.x is enough. `yt-dlp` is optional.
-- Node.js 18+ is needed for `ark-seedream` covers; HyperFrames currently wants Node 22+.
+- HyperFrames currently wants Node.js 22+.
 - HyperFrames, Remotion, and Manim are optional; install per animation slot, not at setup.
 - Never run transcription as part of install verification unless the user asks.
 - Catalog of this author's skills: https://github.com/dannywsh/skills
