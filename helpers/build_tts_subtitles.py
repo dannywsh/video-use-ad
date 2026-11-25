@@ -20,6 +20,12 @@ ERASED_PUNCTUATION = SENTENCE_PUNCTUATION + "「」『』（）()【】[]《》\
 
 HARD_BREAK = frozenset(SENTENCE_PUNCTUATION)
 SOFT_BREAK = frozenset(CLAUSE_PUNCTUATION)
+# Minimum on-screen cue duration to avoid sub-second flashes when space before the
+# next cue permits, matching upstream caption floor (0.35s).
+MIN_CUE_DURATION_S = 0.35
+# A real speech gap at or above this threshold inside an overlong unpunctuated
+# clause is preferred as a split point before falling back to character counting.
+PAUSE_BREAK_S = 0.30
 
 
 def normalized_characters(text: str) -> str:
@@ -159,12 +165,31 @@ def safe_break_positions(text: str) -> list[int]:
     return positions
 
 
-def split_overlong_caption(text: str, maximum_characters: int) -> list[str]:
+def _normalized_offset_to_text_index(text: str, target_norm_offset: int) -> int | None:
+    """Convert a 1-based normalized character offset inside `text` to a string slice index."""
+    if target_norm_offset <= 0:
+        return None
+    seen = 0
+    for idx, ch in enumerate(text):
+        if ch.isalnum():
+            seen += 1
+            if seen == target_norm_offset:
+                return idx + 1
+    return None
+
+
+def split_overlong_caption(
+    text: str,
+    maximum_characters: int,
+    pause_norm_offsets: set[int] | None = None,
+) -> list[str]:
     """Hard-split one caption so no piece exceeds the single-line budget.
 
-    Input: caption text and max normalized characters. Returns: one or more
-    pieces, cut at a Latin/CJK or space boundary whenever one fits inside the
-    budget, so an unpunctuated clause still breaks somewhere readable.
+    Input: caption text, max normalized characters, and optional normalized-character
+    offsets (relative to `text`) where the narrator paused in the audio.
+    Returns: one or more pieces, cut at an ASR pause boundary first when one fits
+    inside the budget, then at a Latin/CJK or space boundary, and finally at the
+    character limit.
     """
     if maximum_characters < 1:
         raise ValueError("maximum_characters must be >= 1")
@@ -172,6 +197,11 @@ def split_overlong_caption(text: str, maximum_characters: int) -> list[str]:
         return [text] if normalized_characters(text) else []
 
     safe = safe_break_positions(text)
+    pause_positions = sorted(
+        pos
+        for offset in (pause_norm_offsets or set())
+        if (pos := _normalized_offset_to_text_index(text, offset)) is not None
+    )
     pieces: list[str] = []
     start = 0
     while len(normalized_characters(text[start:])) > maximum_characters:
@@ -182,8 +212,19 @@ def split_overlong_caption(text: str, maximum_characters: int) -> list[str]:
             if count > maximum_characters:
                 break
             limit = index + 1
-        candidate = max((position for position in safe if start < position <= limit), default=None)
-        cut = candidate if candidate is not None else limit
+        pause_candidate = max(
+            (position for position in pause_positions if start < position <= limit),
+            default=None,
+        )
+        safe_candidate = max(
+            (position for position in safe if start < position <= limit),
+            default=None,
+        )
+        cut = (
+            pause_candidate
+            if pause_candidate is not None
+            else (safe_candidate if safe_candidate is not None else limit)
+        )
         pieces.append(text[start:cut].strip())
         start = cut
     pieces.append(text[start:].strip())
@@ -191,21 +232,36 @@ def split_overlong_caption(text: str, maximum_characters: int) -> list[str]:
 
 
 def build_caption_chunks(
-    script: str, maximum_characters: int, minimum_characters: int
+    script: str,
+    maximum_characters: int,
+    minimum_characters: int,
+    pause_norm_offsets: set[int] | None = None,
 ) -> list[str]:
     """Turn the approved script into on-screen caption chunks.
 
-    Input: approved script and the per-line budget. Returns: ordered chunks whose
-    breaks sit on clause or sentence boundaries, falling back to a mid-clause cut
-    only for a single clause longer than the budget.
+    Input: approved script, per-line budget, and optional script-wide normalized
+    character offsets where the audio has a speech pause >= PAUSE_BREAK_S.
+    Returns: ordered chunks whose breaks sit on clause or sentence boundaries,
+    falling back to an audio-pause or Latin/CJK cut only for a single clause longer
+    than the budget.
     """
     if minimum_characters > maximum_characters:
         raise ValueError("minimum_characters must not exceed maximum_characters")
     chunks: list[str] = []
+    norm_cursor = 0
+    all_pauses = pause_norm_offsets or set()
     for group in group_segments(script_segments(script), maximum_characters, minimum_characters):
+        group_text = "".join(text for text, _ in group)
+        group_norm_len = len(normalized_characters(group_text))
+        local_pauses = {
+            offset - norm_cursor
+            for offset in all_pauses
+            if norm_cursor < offset < norm_cursor + group_norm_len
+        }
         chunks.extend(
-            split_overlong_caption("".join(text for text, _ in group), maximum_characters)
+            split_overlong_caption(group_text, maximum_characters, local_pauses)
         )
+        norm_cursor += group_norm_len
     return chunks
 
 
@@ -255,6 +311,28 @@ def source_to_asr_positions(source: str, words: list[dict]) -> tuple[str, list[i
     return source_normalized, mapping
 
 
+def detect_pause_offsets(
+    mapping: list[int],
+    asr_char_to_word: list[int],
+    spoken_words: list[dict],
+    min_pause_s: float = PAUSE_BREAK_S,
+) -> set[int]:
+    """Find 1-based normalized source character offsets followed by an ASR pause.
+
+    When an overlong unpunctuated clause must be split, breaking at a real speech
+    pause keeps the visual cut aligned with the narrator's breathing.
+    """
+    pauses: set[int] = set()
+    for src_idx in range(len(mapping) - 1):
+        w_curr = asr_char_to_word[mapping[src_idx]]
+        w_next = asr_char_to_word[mapping[src_idx + 1]]
+        if w_next > w_curr:
+            gap = float(spoken_words[w_next]["start"]) - float(spoken_words[w_curr]["end"])
+            if gap >= min_pause_s:
+                pauses.add(src_idx + 1)
+    return pauses
+
+
 def srt_timestamp(seconds: float) -> str:
     """Convert a floating-point timestamp to HH:MM:SS,mmm SRT form."""
     milliseconds = round(seconds * 1000)
@@ -274,7 +352,8 @@ def build_srt(
 
     Input: final TTS script, word-level ASR words and caption length limits.
     Returns: complete UTF-8 SRT content with one semantic line per cue, never with
-    two cues on screen at the same time.
+    two cues on screen at the same time, and extending sub-0.35s cues when space
+    before the next cue allows.
     """
     spoken_words = [
         word
@@ -285,11 +364,12 @@ def build_srt(
     for word_index, word in enumerate(spoken_words):
         asr_char_to_word.extend([word_index] * len(normalized_characters(word["text"])))
     source_normalized, mapping = source_to_asr_positions(script, spoken_words)
-    chunks = build_caption_chunks(script, maximum_characters, minimum_characters)
+    pause_offsets = detect_pause_offsets(mapping, asr_char_to_word, spoken_words)
+    chunks = build_caption_chunks(script, maximum_characters, minimum_characters, pause_offsets)
     cursor = 0
     previous_end = 0.0
-    lines: list[str] = []
-    for number, chunk in enumerate(chunks, 1):
+    raw_cues: list[tuple[float, float, str]] = []
+    for chunk in chunks:
         normalized = normalized_characters(chunk)
         start_source = cursor
         end_source = cursor + len(normalized) - 1
@@ -310,13 +390,20 @@ def build_srt(
         start_word = spoken_words[start_index]
         end_word = spoken_words[end_index]
         start_time = max(float(start_word["start"]), previous_end)
-        end_time = max(float(end_word["end"]), start_time + 0.2)
+        end_time = max(float(end_word["end"]), start_time + MIN_CUE_DURATION_S)
         previous_end = end_time
         caption = format_caption_text(chunk)
         if "\n" in caption:
             raise ValueError("caption cue contains a line break; ad subtitles must stay one line")
         if len(normalized_characters(caption)) > maximum_characters:
             raise ValueError("caption cue exceeds the single-line character budget")
+        raw_cues.append((start_time, end_time, caption))
+        cursor += len(normalized)
+    if cursor != len(source_normalized):
+        raise ValueError("caption splitting did not preserve the complete final TTS script")
+
+    lines: list[str] = []
+    for number, (start_time, end_time, caption) in enumerate(raw_cues, 1):
         lines.extend(
             [
                 str(number),
@@ -325,9 +412,6 @@ def build_srt(
                 "",
             ]
         )
-        cursor += len(normalized)
-    if cursor != len(source_normalized):
-        raise ValueError("caption splitting did not preserve the complete final TTS script")
     return "\n".join(lines)
 
 

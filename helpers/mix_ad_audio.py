@@ -7,6 +7,7 @@ import json
 import math
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 
 
@@ -14,6 +15,9 @@ VOICE_TARGET_I = -13.0
 VOICE_TARGET_TP = -1.5
 BGM_TARGET_I = -27.0
 BGM_TARGET_TP = -3.0
+# Post-mix safety ceiling: alimiter is set to 0.95 (~-0.45 dBFS); AAC encoding can
+# add slight inter-sample overshoots, so any true peak above 0.0 dBTP indicates clipping.
+MAX_MIX_TRUE_PEAK_DBTP = 0.0
 
 
 # Runs one loudnorm measurement pass and returns the values required by pass two.
@@ -112,7 +116,25 @@ def loop_and_trim_bgm(source: Path, duration: float, output: Path) -> None:
     )
 
 
-# Mixes normalized narration and BGM with fixed gain and only prescribed fades.
+# Verifies the rendered mix has a valid audio stream and reports its integrated LUFS and true peak.
+# Input: mixed MP4 path. Returns: (integrated_lufs, true_peak_dbtp) floats.
+def verify_mixed_audio(output_path: Path, max_tp: float = MAX_MIX_TRUE_PEAK_DBTP) -> tuple[float, float]:
+    measurement = measure_loudness(output_path, VOICE_TARGET_I, VOICE_TARGET_TP)
+    try:
+        integrated_i = float(measurement["input_i"])
+        true_peak = float(measurement["input_tp"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"invalid post-mix loudness metrics for {output_path}: {measurement}") from exc
+    if not math.isfinite(integrated_i) or not math.isfinite(true_peak):
+        raise RuntimeError(f"mixed output audio is silent or unmeasurable: {measurement}")
+    if true_peak > max_tp:
+        raise RuntimeError(
+            f"mixed output true peak {true_peak:.2f} dBTP exceeds safety ceiling {max_tp:.2f} dBTP"
+        )
+    return integrated_i, true_peak
+
+
+# Mixes normalized narration and BGM with fixed gain and only prescribed fades, writing atomically.
 # Input: visual video, normalized voice/BGM WAVs, duration and output video. Returns: None.
 def mix_tracks(video: Path, voice: Path, bgm: Path, duration: float, output: Path) -> None:
     validate_narration_duration(voice, duration)
@@ -123,16 +145,22 @@ def mix_tracks(video: Path, voice: Path, bgm: Path, duration: float, output: Pat
         "[voice][bgm]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
         "alimiter=limit=0.95:latency=true[a]"
     )
-    subprocess.run(
-        [
-            "ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(video),
-            "-i", str(voice), "-i", str(bgm), "-filter_complex", filter_complex,
-            "-map", "0:v:0", "-map", "[a]", "-t", f"{duration:.6f}",
-            "-c:v", "copy", "-c:a", "aac", "-ac", "2", "-b:a", "192k", "-movflags", "+faststart",
-            str(output),
-        ],
-        check=True,
-    )
+    temporary = output.with_name(f".{output.stem}-{uuid.uuid4().hex}.partial.mp4")
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(video),
+                "-i", str(voice), "-i", str(bgm), "-filter_complex", filter_complex,
+                "-map", "0:v:0", "-map", "[a]", "-t", f"{duration:.6f}",
+                "-c:v", "copy", "-c:a", "aac", "-ac", "2", "-b:a", "192k", "-movflags", "+faststart",
+                str(temporary),
+            ],
+            check=True,
+        )
+        if temporary.exists():
+            temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 # Checks the CLI inputs before normalization, then produces a narration-preserving promo mix.
@@ -164,7 +192,11 @@ def main() -> None:
         normalize_audio(args.voiceover, voice_normalized, VOICE_TARGET_I, VOICE_TARGET_TP)
         normalize_audio(bgm_trimmed, bgm_normalized, BGM_TARGET_I, BGM_TARGET_TP)
         mix_tracks(args.video, voice_normalized, bgm_normalized, duration, args.output)
-    print(f"mixed ad audio → {args.output} ({duration:.2f}s)")
+    integrated_i, true_peak = verify_mixed_audio(args.output)
+    print(
+        f"mixed ad audio → {args.output} "
+        f"({duration:.2f}s, integrated={integrated_i:.1f} LUFS, true_peak={true_peak:.2f} dBTP)"
+    )
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ import json
 import re
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
@@ -133,13 +133,14 @@ def suggest_role(visible_text: str) -> str:
 
 
 def _as_rgb(image: Image.Image) -> Image.Image:
-    if image.mode in {"RGB", "L"}:
-        return image.convert("RGB")
-    rgb = Image.new("RGB", image.size, (255, 255, 255))
-    if image.mode == "RGBA":
-        rgb.paste(image, mask=image.split()[-1])
+    transposed = ImageOps.exif_transpose(image)
+    if transposed.mode in {"RGB", "L"}:
+        return transposed.convert("RGB")
+    rgb = Image.new("RGB", transposed.size, (255, 255, 255))
+    if transposed.mode == "RGBA":
+        rgb.paste(transposed, mask=transposed.split()[-1])
         return rgb
-    return image.convert("RGB")
+    return transposed.convert("RGB")
 
 
 def export_overview(
@@ -242,11 +243,11 @@ def _resolve_source(folder: Path | None, source: str | Path) -> Path:
 
 
 def inventory_folder(folder: Path, overview_dir: Path | None = None) -> dict:
-    """Measure every still and optionally export y-tick overviews for tall ones."""
+    """Measure every still (honoring EXIF orientation) and optionally export y-tick overviews."""
     stills_payload = []
     for source in iter_stills(folder):
         with Image.open(source) as image:
-            width, height = image.size
+            width, height = ImageOps.exif_transpose(image).size
         viewports = height / viewport_height(width)
         tall = is_tall(width, height)
         overview = None

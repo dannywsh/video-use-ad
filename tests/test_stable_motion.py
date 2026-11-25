@@ -217,6 +217,41 @@ class RenderProfileTests(unittest.TestCase):
         self.assertAlmostEqual(S.PUSH_FOREGROUND_SCALE * S.PUSH_MAX_ZOOM, 1.0)
 
 
+class OrientationAndColorTests(unittest.TestCase):
+    def test_exif_rotated_image_swaps_dimensions_to_display_orientation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rotated_portrait.jpg"
+            # Coded as 1600x900 landscape, but EXIF Orientation=6 (Rotate 90 CW) makes it 900x1600 portrait.
+            img = Image.new("RGB", (1600, 900), (80, 120, 160))
+            exif = Image.Exif()
+            exif[0x0112] = 6
+            img.save(path, exif=exif)
+            self.assertEqual(S.image_dimensions(path), (900, 1600))
+
+    def test_ffprobe_fallback_swaps_dimensions_on_90_degree_side_data(self):
+        probe_json = json.dumps({
+            "streams": [{"width": 1920, "height": 1080, "side_data_list": [{"rotation": -90}]}]
+        })
+        completed = subprocess.CompletedProcess([], 0, stdout=probe_json)
+        with patch.object(S.subprocess, "run", return_value=completed):
+            self.assertEqual(S.image_dimensions(Path("nonexistent_video_stream.mp4")), (1080, 1920))
+
+    def test_render_pan_right_includes_bt709_color_metadata_and_atomic_write(self):
+        captured = []
+        with (
+            patch.object(S, "image_dimensions", return_value=(3000, 1080)),
+            patch.object(S, "render_profile", return_value=S.RenderProfile(1, ("-c:v", "libx264", "-crf"))),
+            patch.object(S, "run", side_effect=lambda cmd: captured.append(cmd)),
+        ):
+            S.render_pan_right(Path("wide.jpg"), Path("out.mp4"), 5.0, 30, 1920, 1080, 17)
+        self.assertEqual(len(captured), 1)
+        cmd = captured[0]
+        self.assertIn("-colorspace", cmd)
+        self.assertIn("bt709", cmd)
+        self.assertTrue(any("out_color_matrix=bt709" in arg for arg in cmd))
+        self.assertTrue(cmd[-1].endswith(".partial.mp4"))
+
+
 class ProbeCliTests(unittest.TestCase):
     def test_probe_json_on_tall_fixture(self):
         with tempfile.TemporaryDirectory() as tmp:

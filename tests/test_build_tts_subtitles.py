@@ -69,6 +69,12 @@ class ClauseBreakingTests(unittest.TestCase):
         chunks = B.split_overlong_caption("POUR OVER BREW 慢速手冲咖啡萃取法", 18)
         self.assertEqual(chunks, ["POUR OVER BREW", "慢速手冲咖啡萃取法"])
 
+    def test_an_overlong_unpunctuated_clause_prefers_asr_speech_pause(self):
+        # 22 Chinese characters with no punctuation or spaces; ASR has a 0.4s pause after char 10 ("这款手办的披风细节用").
+        clause = "这款手办的披风细节用了多层渐变涂装工艺很精致"
+        chunks = B.split_overlong_caption(clause, 18, pause_norm_offsets={10})
+        self.assertEqual(chunks, ["这款手办的披风细节用", "了多层渐变涂装工艺很精致"])
+
     def test_minimum_above_maximum_is_rejected(self):
         with self.assertRaises(ValueError):
             B.build_caption_chunks("测试。", 8, 18)
@@ -134,6 +140,35 @@ class CueTimelineTests(unittest.TestCase):
         # SRT timestamps are fixed-width, so lexicographic order is time order.
         for start, end, _ in self.cues():
             self.assertLess(start, end)
+
+    def test_short_spoken_cue_is_extended_to_at_least_350ms_floor(self):
+        script = "好。我们继续。"
+        words = [
+            {"type": "word", "text": "好", "start": 0.0, "end": 0.12},
+            {"type": "word", "text": "我", "start": 0.60, "end": 0.75},
+            {"type": "word", "text": "们", "start": 0.75, "end": 0.90},
+            {"type": "word", "text": "继", "start": 0.90, "end": 1.05},
+            {"type": "word", "text": "续", "start": 1.05, "end": 1.25},
+        ]
+        srt = B.build_srt(script, words, 18, 1)
+        self.assertIn("00:00:00,000 --> 00:00:00,350", srt)
+
+    def test_overlong_clause_in_build_srt_splits_at_asr_pause_and_passes_verify(self):
+        # 20 chars without punctuation; pause >= 0.3s after 9th character ("这款全新手办的底座").
+        script = "这款全新手办的底座采用了高透渐变特效配件。"
+        words = []
+        clock = 0.0
+        for idx, ch in enumerate(B.normalized_characters(script)):
+            words.append({"type": "word", "text": ch, "start": round(clock, 3), "end": round(clock + 0.12, 3)})
+            clock += 0.12
+            if idx == 8:
+                clock += 0.45  # 0.45s speech pause after "座"
+        srt = B.build_srt(script, words, 18, 8)
+        bodies = V.srt_caption_bodies(srt)
+        self.assertEqual(bodies, ["这款全新手办的底座", "采用了高透渐变特效配件"])
+        V.assert_script_matches_srt(script, srt)
+        V.assert_single_line_cues(srt, 18)
+        self.assertEqual(V.assert_breaks_land_on_clauses(script, srt, 18), 2)
 
 
 class VerifyTests(unittest.TestCase):

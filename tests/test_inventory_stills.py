@@ -129,6 +129,20 @@ class OverviewCropTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 I.crop_window(src, Path(tmp) / "bad.jpg", 500, 100)
 
+    def test_exif_rotated_image_is_inventoried_in_display_orientation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "raw"
+            folder.mkdir()
+            src = folder / "exif_tall.jpg"
+            img = Image.new("RGB", (1200, 400), (40, 60, 90))
+            exif = Image.Exif()
+            exif[0x0112] = 6  # Rotate 90 CW -> 400x1200 display
+            img.save(src, exif=exif)
+            payload = I.inventory_folder(folder)
+            entry = payload["stills"][0]
+            self.assertEqual((entry["width"], entry["height"]), (400, 1200))
+            self.assertTrue(entry["tall"])
+
 
 class InventoryCliTests(unittest.TestCase):
     def test_exports_overview_for_tall_fixture_not_equal_bands(self):

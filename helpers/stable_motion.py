@@ -8,8 +8,11 @@ import math
 import platform
 import subprocess
 import tempfile
+import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+from PIL import Image, ImageOps
 
 
 # 非 macOS 以固定 2× 画布渲染后再下采样，消除慢推镜中的整数像素台阶。
@@ -18,6 +21,8 @@ DEFAULT_SUPERSAMPLE = 2
 MACOS_SUPERSAMPLE = 1.5
 # VideoToolbox 不支持 libx264 的 CRF 质量控制，改用适合 1080p30 静图运动的目标码率。
 MACOS_VIDEO_BITRATE = "16M"
+# 统一输出 Rec.709 色彩空间元数据，避免广色域商品图与插入的 OP/ED 拼接时偏色。
+BT709_COLOR_ARGS = ("-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709")
 # 只在内容明显超出一屏时才滚动；较短长图改为整图缓慢推近展示。
 MIN_SCROLL_TRAVEL_VIEWPORTS = 0.15
 # 推镜结束时前景约占满一屏高度：前景初始尺寸乘最大缩放率恰好为 1。
@@ -83,6 +88,18 @@ def run(command: list[str]) -> None:
     subprocess.run(command, check=True)
 
 
+def run_atomic_encode(command: list[str], output: Path) -> None:
+    """Encode to a unique partial MP4 in the destination folder and atomically replace `output`."""
+    temporary = output.with_name(f".{output.stem}-{uuid.uuid4().hex}.partial.mp4")
+    cmd = [*command[:-1], str(temporary)]
+    try:
+        run(cmd)
+        if temporary.exists():
+            temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def even(value: float) -> int:
     """Round a size down to the nearest positive even integer.
 
@@ -97,22 +114,47 @@ def even_coord(value: float) -> int:
 
 
 def image_dimensions(path: Path) -> tuple[int, int]:
-    """Read the first image/video stream dimensions with FFprobe.
+    """Read the display image/video dimensions, honoring EXIF / displaymatrix 90°/270° rotation.
 
     Input: source media path. Returns: (width, height), or raises on invalid input.
     """
+    if path.is_file():
+        try:
+            with Image.open(path) as img:
+                width, height = ImageOps.exif_transpose(img).size
+                if width > 0 and height > 0:
+                    return width, height
+        except Exception:
+            pass
+
     result = subprocess.run(
         [
             "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path),
+            "-show_entries", "stream=width,height:stream_tags=rotate:stream_side_data=rotation",
+            "-of", "json", str(path),
         ],
         capture_output=True,
         text=True,
         check=True,
     )
+    raw = (result.stdout or "").strip()
     try:
-        width, height = (int(value) for value in result.stdout.strip().split(","))
-    except ValueError as error:
+        if raw.startswith("{"):
+            stream = (json.loads(raw).get("streams") or [{}])[0]
+            width = int(stream["width"])
+            height = int(stream["height"])
+            rot = 0
+            tags = stream.get("tags") or {}
+            if "rotate" in tags:
+                rot = int(float(tags["rotate"]))
+            for sd in stream.get("side_data_list") or []:
+                if "rotation" in sd:
+                    rot = int(float(sd["rotation"]))
+            if abs(rot) % 180 == 90:
+                width, height = height, width
+        else:
+            width, height = (int(value) for value in raw.split(","))
+    except (KeyError, TypeError, ValueError) as error:
         raise ValueError(f"could not resolve image dimensions for {path}") from error
     if width <= 0 or height <= 0:
         raise ValueError(f"invalid image dimensions for {path}: {width}×{height}")
@@ -440,12 +482,14 @@ def render_push(source: Path, output: Path, duration: float, fps: int, width: in
         zoom_filter = (
             f"zoompan=z='min(1+{zoom_step:.10f}*on,{PUSH_MAX_ZOOM})':"
             "x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:"
-            f"s={render_width}x{render_height}:fps={fps},scale={width}:{height}:flags=lanczos,format=yuv420p"
+            f"s={render_width}x{render_height}:fps={fps},"
+            f"scale={width}:{height}:flags=lanczos:out_color_matrix=bt709,format=yuv420p"
         )
-        run([
+        run_atomic_encode([
             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-loop", "1", "-framerate", str(fps), "-i", str(base),
-            "-t", f"{duration:.6f}", "-vf", zoom_filter, "-an", *encoder_args(profile, crf), "-movflags", "+faststart", str(output),
-        ])
+            "-t", f"{duration:.6f}", "-vf", zoom_filter, "-an", *encoder_args(profile, crf),
+            *BT709_COLOR_ARGS, "-movflags", "+faststart", str(output),
+        ], output)
 
 
 def render_scroll(
@@ -492,13 +536,14 @@ def render_scroll(
         filter_complex = (
             f"[1:v]format=rgba,scale={foreground_width}:{foreground_height}[fg];"
             f"[0:v][fg]overlay=x=(W-w)/2:y='{scroll_overlay_y(travel, pixels_per_sec)}':eval=frame,"
-            f"scale={width}:{height}:flags=lanczos,format=yuv420p"
+            f"scale={width}:{height}:flags=lanczos:out_color_matrix=bt709,format=yuv420p"
         )
-        run([
+        run_atomic_encode([
             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-loop", "1", "-framerate", str(fps), "-i", str(background),
             "-loop", "1", "-framerate", str(fps), "-i", str(plate), "-t", f"{duration:.6f}",
-            "-filter_complex", filter_complex, "-r", str(fps), "-an", *encoder_args(profile, crf), "-movflags", "+faststart", str(output),
-        ])
+            "-filter_complex", filter_complex, "-r", str(fps), "-an", *encoder_args(profile, crf),
+            *BT709_COLOR_ARGS, "-movflags", "+faststart", str(output),
+        ], output)
     return window
 
 
@@ -532,15 +577,15 @@ def render_pan_right(
     video_filter = (
         f"scale={plan.foreground_w}:{plan.foreground_h}:flags=lanczos,"
         f"crop={render_width}:{render_height}:x='{x_expression}':y={y_offset},"
-        f"scale={width}:{height}:flags=lanczos,format=yuv420p"
+        f"scale={width}:{height}:flags=lanczos:out_color_matrix=bt709,format=yuv420p"
     )
-    run([
+    run_atomic_encode([
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-loop", "1", "-framerate", str(fps), "-i", str(source),
         "-t", f"{duration:.6f}", "-vf", video_filter,
         "-r", str(fps), "-an", *encoder_args(profile, crf),
-        "-movflags", "+faststart", str(output),
-    ])
+        *BT709_COLOR_ARGS, "-movflags", "+faststart", str(output),
+    ], output)
     return plan
 
 

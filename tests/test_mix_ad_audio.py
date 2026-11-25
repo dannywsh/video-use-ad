@@ -58,6 +58,25 @@ class DurationValidationTests(unittest.TestCase):
             mix.mix_tracks(Path("picture.mp4"), Path("voice.wav"), Path("bgm.wav"), 8.2, Path("mix.mp4"))
         run.assert_not_called()
 
+    def test_verify_mixed_audio_rejects_excessive_true_peak_or_silence(self):
+        with patch.object(
+            mix, "measure_loudness", return_value={"input_i": "-13.1", "input_tp": "0.45"}
+        ), self.assertRaisesRegex(RuntimeError, "exceeds safety ceiling"):
+            mix.verify_mixed_audio(Path("mixed.mp4"))
+
+        with patch.object(
+            mix, "measure_loudness", return_value={"input_i": "-inf", "input_tp": "-inf"}
+        ), self.assertRaisesRegex(RuntimeError, "silent or unmeasurable"):
+            mix.verify_mixed_audio(Path("mixed.mp4"))
+
+    def test_verify_mixed_audio_returns_integrated_and_true_peak(self):
+        with patch.object(
+            mix, "measure_loudness", return_value={"input_i": "-13.2", "input_tp": "-1.15"}
+        ):
+            integrated, tp = mix.verify_mixed_audio(Path("mixed.mp4"))
+        self.assertAlmostEqual(integrated, -13.2)
+        self.assertAlmostEqual(tp, -1.15)
+
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg/FFprobe required")
 class ActualMixTimingTests(unittest.TestCase):
@@ -120,6 +139,9 @@ class ActualMixTimingTests(unittest.TestCase):
         output = self.root / "mixed.mp4"
         result = self.run_mix(self.picture(2), output)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("integrated=", result.stdout)
+        self.assertIn("true_peak=", result.stdout)
+        self.assertEqual(list(self.root.glob("*.partial.mp4")), [])
         decoded = subprocess.run([
             "ffmpeg", "-v", "error", "-xerror", "-i", str(output), "-vn", "-ac", "1",
             "-ar", str(self.rate), "-f", "f32le", "-",
