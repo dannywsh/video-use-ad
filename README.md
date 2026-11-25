@@ -19,7 +19,7 @@
 - **30ms 音频淡入淡出**，每个剪辑点都不会出现爆音
 - **烧录字幕**，普通剪辑默认两词大写分块、可自定义；广告使用固定中文单行样式
 - **AI 配音（TTS）**，支持 ElevenLabs、MiMo、Fish Audio 三个 provider；Fish Audio 支持私有可复用的声音克隆
-- **生成动画叠加层**，支持 HyperFrames、Remotion、Manim 或 PIL，并行子代理逐个生成
+- **生成动画叠加层**，支持 HyperFrames、Remotion、Manim 或 PIL，可在当前代理下串行生成或通过并行子代理生成
 - **渲染输出自检**，在每个剪辑边界自动评估后才展示结果
 - **会话记忆持久化**到 `project.md`，下次继续编辑时无缝衔接
 

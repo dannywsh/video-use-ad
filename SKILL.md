@@ -53,7 +53,7 @@ These are the things where deviation produces silent failures or broken output. 
 7. **Pad every cut edge.** Working window: 30–200ms. ASR timestamps drift 50–100ms — padding absorbs the drift. Tighter for fast-paced, looser for cinematic.
 8. **Word-level verbatim ASR only.** Never SRT/phrase mode (loses sub-second gap data). Never normalized fillers (loses editorial signal).
 9. **Cache transcripts per source.** Never re-transcribe unless the source file itself changed.
-10. **Parallel sub-agents for multiple animations.** Never sequential. Spawn N at once via the `Agent` tool; total wall time ≈ slowest one.
+10. **Isolate animation slots (parallel sub-agents when supported, or serial in the current agent).** If the runtime provides a synchronous local `Agent` tool, spawn N sub-agents in parallel (total wall time ≈ slowest one); in environments without synchronous local sub-agents (or where asynchronous sub-agents suspend the turn or detach local tools), execute animation slots serially in the current agent.
 11. **Strategy confirmation before execution.** Never touch the cut until the user has approved the plain-English plan.
 12. **All generated session files in `<edit>/`.** This includes engineering projects (source code, configs, manifests, lockfiles, local dependencies, scripts, and per-slot working directories), intermediate media, downloaded media, caches, reports, previews, and final deliverables. Never scaffold, render, download, or cache session files in the `video-use/` project directory, the current working directory, or beside the source files outside `<edit>/`.
 13. **TTS narration subtitles are verbatim and final-audio aligned.** Generate captions only after the final TTS audio exists. Every spoken word, including brand names, qualifiers, and fillers the user expects, must appear in the subtitles in the same order; split only at natural semantic boundaries and never summarize, paraphrase, or omit text. Derive timestamps from word-level transcription or forced alignment of that exact final audio, then convert them to output-timeline offsets. Never hand-estimate subtitle timings from the script or total runtime.
@@ -191,7 +191,7 @@ python "<skill_root>/helpers/transcribe.py" "<edit>/voiceover/narration.wav" --e
 python "<skill_root>/helpers/transcribe_batch.py" <videos_dir> --provider paraformer
 ```
 
-For animations, create `<edit>/animations/slot_<id>/` with `Bash` and spawn a sub-agent via the `Agent` tool.
+For animations, create `<edit>/animations/slot_<id>/` with `Bash` and either build each slot serially in the current agent or spawn parallel sub-agents if a synchronous local `Agent` tool is available.
 
 ## The process
 
@@ -201,7 +201,7 @@ If this session is **Bilibili product promo**, skip this section and follow [广
 2. **Pre-scan for problems.** One pass over `takes_packed.md` to note verbal slips, obvious mis-speaks, or phrasings to avoid. Plain list, feed into the editor brief.
 3. **Converse.** Describe what you see in plain English. Ask questions *shaped by the material*. Collect: content type, target length/aspect, aesthetic/brand direction, pacing feel, must-preserve moments, must-cut moments, animation and grade preferences, subtitle needs, voiceover needs. Do not use a fixed checklist — the right questions are different every time.
 4. **Propose strategy.** 4–8 sentences: shape, take choices, cut direction, animation plan, grade direction, subtitle style, voiceover plan, length estimate. **Wait for confirmation.**
-5. **Execute.** Produce `edl.json` via the editor sub-agent brief. Drill into `timeline_view` at ambiguous moments. Build animations in parallel sub-agents. Generate voiceover with `tts.py` if requested. Apply grade per-segment. Compose via `render.py`.
+5. **Execute.** Produce `edl.json` following the editor brief (directly in the current agent or via a sub-agent). Drill into `timeline_view` at ambiguous moments. Build animations (in parallel sub-agents when supported, or serially in the current agent). Generate voiceover with `tts.py` if requested. Apply grade per-segment. Compose via `render.py`.
 6. **Preview.** `render.py --preview`.
 7. **Self-eval (before showing the user).** Run `timeline_view` on the **rendered output** (not the sources) at every cut boundary (±1.5s window). Check each image for:
    - Visual discontinuity / flash / jump at the cut
@@ -215,7 +215,7 @@ If this session is **Bilibili product promo**, skip this section and follow [广
 
    Measure the audio, don't assume it: `ffmpeg -i out.mp4 -af ebur128=peak=true -f null -` for integrated loudness and true peak, plus RMS per section (dialogue, music-only, end card). An end card 15 dB under the dialogue, or effects louder than speech, is a bug. You cannot listen: say so, and report the numbers.
 
-   For anything the user will publish (launch, promo, ad), also spawn one **critic sub-agent** with the rendered file, the EDL, and any reference videos the user gave. Brief it to roast, not to praise: a verdict, ranked problems with timecodes and evidence (frames, levels), and the 5 fixes to do first. Fresh eyes catch what the author stopped seeing — cut-off payoff lines, 0.5s memes, unreadable 28px text at phone size.
+   For anything the user will publish (launch, promo, ad), also run a dedicated **critic review** pass (either in the current agent serially or via a critic sub-agent if synchronous local sub-agents are supported) with the rendered file, the EDL, and any reference videos the user gave. Roast rather than praise: produce a verdict, ranked problems with timecodes and evidence (frames, levels), and the 5 fixes to do first to catch cut-off payoff lines, 0.5s memes, or unreadable 28px text at phone size.
 
    If anything fails: fix → re-render → re-eval. **Cap at 3 self-eval passes** — if issues remain after 3, flag them to the user rather than looping forever. Only present the preview once the self-eval passes.
 8. **Iterate + persist.** Natural-language feedback, re-plan, re-render. Never re-transcribe. Final render on confirmation. Append to `project.md`.
@@ -231,7 +231,7 @@ If this session is **Bilibili product promo**, skip this section and follow [广
 **展会分区：** 展会视频必须使用 `biliup upload --tid 21`，即「生活 → 日常」分区。
 
 1. 封存本次投稿输入到 `<edit>/submission_preflight.md`：最终 `final.mp4`、标题、简介、标签、分区、`cover.jpg`、`cover-4x3.jpg` 及商品参数（如有），并记录最终视频和封面的 SHA-256。封存后不得替换这些文件或修改这些字段。
-2. 在投稿前完成并记录全部检查：`ffprobe` 检查文件可读性、容器、音视频流、编码、时长、分辨率和帧率；抽查成片首段、中段、尾段及所有关键切点；活动另按 [主视觉复用审核](references/convention.md#活动选材与主视觉复用审核) 核对每镜代表帧总览和分镜搭配，遗漏可用内容或无理由复用的画面须先修正；确认字幕、混音后实测响度/真峰值（`mix_ad_audio.py` 输出指标）、画面与文案、外部素材相关性、对外文本禁词、标题/简介/标签和两张封面均通过，并派发独立 **critic sub-agent** 完成挑刺审片且无阻塞问题（结果记入 `submission_preflight.md`）。简介的真实换行与链接范围也必须在投稿前确认；投稿后的 `show` 回读只能作为结果核验，不能替代投稿前校验。
+2. 在投稿前完成并记录全部检查：`ffprobe` 检查文件可读性、容器、音视频流、编码、时长、分辨率和帧率；抽查成片首段、中段、尾段及所有关键切点；活动另按 [主视觉复用审核](references/convention.md#活动选材与主视觉复用审核) 核对每镜代表帧总览和分镜搭配，遗漏可用内容或无理由复用的画面须先修正；确认字幕、混音后实测响度/真峰值（`mix_ad_audio.py` 输出指标）、画面与文案、外部素材相关性、对外文本禁词、标题/简介/标签和两张封面均通过，并完成挑刺审片（可由当前 agent 直接串行完成，或在支持同步本地子代理的环境中派发 critic sub-agent）且无阻塞问题（结果记入 `submission_preflight.md`）。简介的真实换行与链接范围也必须在投稿前确认；投稿后的 `show` 回读只能作为结果核验，不能替代投稿前校验。
 3. 只有全部结果为通过，才允许执行一次 `biliup upload ...`。执行后即使发现错误，也不得自动修正并再次投稿；停止并向用户说明问题。
 4. 命令超时、断网、进程中断或返回不明确时，禁止重跑上传命令。改用只读查询确认是否已生成 BV/AV；仍无法确认时，按已投稿处理，不能为了“确保成功”再投一次。
 5. 投稿成功后可执行 `biliup show <BV/AV>` 和本 skill 允许的商品挂载/评论等后置操作，但这些动作永远不能重新上传视频。任何需要换视频文件的修正版都属于新的投稿任务，当前任务不得执行。
@@ -250,7 +250,7 @@ If this session is **Bilibili product promo**, skip this section and follow [广
 
 ## The packed transcript (primary reading view)
 
-`pack_transcripts.py` reads all `transcripts/*.json` and produces one markdown file where each take is a list of phrase-level lines, each prefixed with its `[start-end]` time range. Phrases break on any silence ≥ 0.5s OR speaker change. This is the artifact the editor sub-agent reads to pick cuts — it gives word-boundary precision from text alone at 1/10 the tokens of raw JSON.
+`pack_transcripts.py` reads all `transcripts/*.json` and produces one markdown file where each take is a list of phrase-level lines, each prefixed with its `[start-end]` time range. Phrases break on any silence ≥ 0.5s OR speaker change. This is the artifact the agent (or editor sub-agent) reads to pick cuts — it gives word-boundary precision from text alone at 1/10 the tokens of raw JSON.
 
 Example line:
 ```
@@ -259,9 +259,9 @@ Example line:
   [006.08-006.74] S0 We fixed this.
 ```
 
-## Editor sub-agent brief (for multi-take selection)
+## Editor brief (for multi-take selection)
 
-When the task is "pick the best take of each beat across many clips," spawn a dedicated sub-agent with a brief shaped like this. The structure is load-bearing; the pitch-shape example is not.
+When the task is "pick the best take of each beat across many clips," either follow this brief directly in the current agent or spawn a dedicated sub-agent if synchronous local sub-agents are supported. The structure is load-bearing; the pitch-shape example is not.
 
 ```
 You are editing a <type> video. Pick the best take of each beat and
@@ -443,7 +443,7 @@ This is one style. If the brand is warm and serif, use that. If it's colorful an
 
 **Worked example — "show the edit" hook** (a launch video for this tool). Instead of a title card, the first 3s visualize the editing itself: each transcript word pops in on its Scribe timestamp, with bars under it drawn from the real audio envelope; a filler ("ummm") grows letter by letter while it is spoken, turns orange and is cut out on screen at the same frame the audio cuts, and the next line lands immediately. It works because the picture is *driven by the same data as the sound* — one composition (Remotion) reads frame-exact word/envelope JSON produced in Python, so nothing can drift. Use the idea whenever the story is "we removed something": make the removal visible.
 
-**Parallel sub-agent brief** — each animation is one sub-agent spawned via the `Agent` tool. Each prompt is self-contained (sub-agents have no parent context). Include:
+**Animation slot brief (parallel sub-agents or serial execution)** — each animation slot is an isolated task in `<edit>/animations/slot_<id>/`. If the runtime supports synchronous local sub-agents (`Agent` tool), spawn one sub-agent per slot in parallel with a self-contained prompt; otherwise execute each slot serially in the current agent. For each slot, specify:
 
 1. One-sentence goal: *"Build ONE animation: [spec]. Nothing else."*
 2. Absolute output path (`<edit>/animations/slot_<id>/render.mp4`)
@@ -456,9 +456,9 @@ This is one style. If the brand is warm and serif, use that. If it's colorful an
 9. Deliverable checklist (script, render, verify duration via ffprobe, report)
 10. **"Do not ask questions. If anything is ambiguous, pick the most obvious interpretation and proceed."**
 
-同时在代理任务中传递主入口已解析的 `<skill_root>`、`<edit>` 及指向 `<edit>/tmp` 的 `TMPDIR`、`TMP`、`TEMP`，在代理的渲染进程启动前设置，避免自包含任务丢失临时目录约定。
+若使用子代理，同时在代理任务中传递主入口已解析的 `<skill_root>`、`<edit>` 及指向 `<edit>/tmp` 的 `TMPDIR`、`TMP`、`TEMP`，在渲染进程启动前设置，避免自包含任务丢失临时目录约定。
 
-One sub-agent = one file (unique filenames, parallel agents don't overwrite each other).
+One slot = one isolated directory and output file (unique filenames so slots never overwrite each other).
 
 ## Music and sound effects (when requested)
 
@@ -540,7 +540,7 @@ Things that consistently fail regardless of style:
 - **Hard audio cuts at segment boundaries.** Audible pops. (Hard Rule 3.)
 - **Hard-cutting between different source classes.** Product stills vs OP/ED/Trailer, or any inserted B-roll against the A-roll, need a dissolve (`fade` 0.3–0.5s) unless the user asked for jump cuts. Same-camera talking-head cuts stay hard-cut.
 - **Typing text centered on the partial string.** Text slides left as it grows.
-- **Sequential sub-agents for multiple animations.** Always parallel.
+- **Spawning sequential sub-agents or using asynchronous sub-agents that detach local tools.** When sub-agents are supported synchronously, run them in parallel; when the runtime lacks synchronous local sub-agents, run serially in the current agent instead of spawning sub-agents.
 - **Editing before confirming the strategy.** Never.
 - **Re-transcribing cached sources.** Immutable outputs of immutable inputs.
 - **Assuming what kind of video it is.** Look first, ask second, edit last.
@@ -602,7 +602,7 @@ The rules here are production standards, not taste. For ordinary goods, product/
 9. **检索并下载 BGM**：按 [混音规范](#混音规范人声为主数值硬性)从 **YouTube 或 Bilibili** 找到与产品/作品相关的现成 OST 或 BGM 并下载音频。禁止用 AI 或本地合成生成 BGM。
 10. **混音**：对无字幕的视觉成片运行 `python "<skill_root>/helpers/mix_ad_audio.py" <visual.mp4> <narration.mp3> <bgm.mp3> -o <mixed.mp4>`。该 helper 以临时文件原子写入，固定执行人声 -13 LUFS、BGM -27 LUFS、BGM 首尾淡化、无自动闪避与防削波，并在混音完成后自动复测输出文件的综合响度（Integrated LUFS）与真峰值（True Peak ≤ 0.0 dBTP）；不得再对 `mixed.mp4` 做整轨 loudnorm。混音前会检查实际视频流时长是否覆盖完整口播，过短时失败，不生成或覆盖混音成片。修正画面时间窗，或按确定的目标时长同步重做口播与字幕，禁止截掉末句。限幅器启用延迟补偿，口播和字幕不按画面转场重叠提前。
 11. **烧录字幕**：最后执行，按 [字幕规范](#字幕规范中文单行字幕)。字幕必须烧录到 `mixed.mp4` 上；不得先烧字幕再混音，也不得在烧录后用 `render.py` 的默认整轨 loudnorm 覆盖分轨响度。
-12. **自检与独立审片（Critic Sub-agent）交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；`ffprobe` 对照画面与口播时长（允许转场取整误差，不得差出一整句）。若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 [对外文本禁词](#对外文本禁词硬性)检查口播、字幕、标题、简介、封面文字和标签。随后派发一个独立的 **critic sub-agent**（传入成片各镜代表帧、烧录后的字幕截图、`stills_inventory.md`、混音实测响度、标题、简介和两张封面），要求其专门挑刺而非夸奖：核查商品主体是否被裁切（头、脚、底座、配件）、字幕是否压住关键主体或闪屏、漫展 KV 是否无理由过度复用、对外文本是否残留禁词或未核实承诺，并按时间码给出排序问题与前 5 项必修项；阻塞问题修复后才放行。最终交付是一个不可拆分的套件：`final.mp4`、按 [B站标题交付规范](#b站标题交付规范)生成的 **1 个**标题、以及按 [封面子 skill](skills/bili-cover/SKILL.md) 交付的 **16:9 + 4:3 两张封面**（4:3 从 16:9 以看图后选择的连续 `crop_center_x` 裁出）。商品封面同时交付实际使用的完整提示词；官方漫展海报注明“使用官方宣传图，未调用生图”；任何一项缺失均不得宣告任务完成。
+12. **自检与挑刺审片交付**：检查字幕在最上层、无削波、无爆音、图片与文案匹配；`ffprobe` 对照画面与口播时长（允许转场取整误差，不得差出一整句）。若使用了动态视频，确认每个计划的语义点确实出现对应画面，而不是 BGM 音频或静态封面替代，并抽查首帧、中帧与尾帧。按 [对外文本禁词](#对外文本禁词硬性)检查口播、字幕、标题、简介、封面文字和标签。随后执行**挑刺审片（Critic Review）**：可在当前 agent 下直接串行审片（无需强制派发独立子代理，尤其在异步子代理会挂起轮次或断开本机工具的环境中），仅在支持同步本地子代理的环境中才可选派发独立 critic sub-agent。审片须对照成片各镜代表帧、烧录后的字幕截图、`stills_inventory.md`、混音实测响度、标题、简介和两张封面，专门挑刺而非夸奖：核查商品主体是否被裁切（头、脚、底座、配件）、字幕是否压住关键主体或闪屏、漫展 KV 是否无理由过度复用、对外文本是否残留禁词或未核实承诺，并按时间码给出排序问题与前 5 项必修项；阻塞问题修复后才放行。最终交付是一个不可拆分的套件：`final.mp4`、按 [B站标题交付规范](#b站标题交付规范)生成的 **1 个**标题、以及按 [封面子 skill](skills/bili-cover/SKILL.md) 交付的 **16:9 + 4:3 两张封面**（4:3 从 16:9 以看图后选择的连续 `crop_center_x` 裁出）。商品封面同时交付实际使用的完整提示词；官方漫展海报注明“使用官方宣传图，未调用生图”；任何一项缺失均不得宣告任务完成。
 
 ### B站商品挂载文案
 
