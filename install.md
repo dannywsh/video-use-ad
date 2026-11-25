@@ -162,12 +162,12 @@ PYTHON
 
 #### Paraformer (optional — Chinese ASR)
 
-Check `PARAFORMER_API_TOKEN` with the same parser; ask only if it is required and missing, then update that entry in `USER_ENV`. Optional `PARAFORMER_API_URL` overrides the default ``; retain an existing override.
+Check `PARAFORMER_API_TOKEN` and `PARAFORMER_API_URL` with the same parser; ask only if required and missing, then update those entries in `USER_ENV`.
 
-The original read-only health check is:
+The read-only health check is:
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' $PARAFORMER_API_URL/health
+curl -s -o /dev/null -w '%{http_code}\n' "$PARAFORMER_API_URL/health"
 ```
 
 #### Fish Audio (default TTS)

@@ -290,7 +290,7 @@ def transcribe_one(
             print(f"  uploading {video.stem}.wav ({size_mb:.1f} MB) via {provider}", flush=True)
         if provider == "paraformer":
             token = paraformer_token or load_api_key("PARAFORMER_API_TOKEN")
-            base_url = paraformer_url or load_env_value("PARAFORMER_API_URL", DEFAULT_PARAFORMER_URL)
+            base_url = paraformer_url or load_api_key("PARAFORMER_API_URL")
             payload = call_paraformer(audio, token, base_url)
         else:
             payload = call_scribe(
@@ -345,7 +345,7 @@ def main() -> None:
         "--paraformer-url",
         type=str,
         default=None,
-        help=f"Paraformer base URL (default: PARAFORMER_API_URL or {DEFAULT_PARAFORMER_URL})",
+        help="Paraformer base URL (default: PARAFORMER_API_URL from .env or environment)",
     )
     ap.add_argument(
         "--audio-track",
